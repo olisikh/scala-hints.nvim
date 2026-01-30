@@ -1,4 +1,4 @@
-local utils = require('scala-zio-quickfix.utils')
+local utils = require('scala-hints.utils')
 local ts = vim.treesitter
 
 local zio_predicate = function(value)

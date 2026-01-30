@@ -18,7 +18,7 @@ You likely already have all the dependency plugins installed.
 Lazy:
 ```lua
 {
-  'alisiikh/nvim-scala-zio-quickfix', 
+  'alisiikh/scala-hints.nvim', 
   opts = {},
   dependencies = {
     'nvim-lua/plenary.nvim',

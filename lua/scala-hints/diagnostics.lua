@@ -1,8 +1,8 @@
 local parsers = require('nvim-treesitter.parsers')
 local async = require('plenary.async')
-local utils = require('scala-zio-quickfix.utils')
-local query = require('scala-zio-quickfix.query')
-local constants = require('scala-zio-quickfix.constants')
+local utils = require('scala-hints.utils')
+local query = require('scala-hints.query')
+local constants = require('scala-hints.constants')
 
 local source = constants.source
 

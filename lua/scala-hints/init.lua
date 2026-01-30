@@ -1,13 +1,13 @@
 local null_ls = require('null-ls')
 local async = require('plenary.async')
-local utils = require('scala-zio-quickfix.utils')
-local constants = require('scala-zio-quickfix.constants')
+local utils = require('scala-hints.utils')
+local constants = require('scala-hints.constants')
 
 local lang = constants.lang
 local source = constants.source
 
-local diagnostics = require('scala-zio-quickfix.diagnostics')
-local actions = require('scala-zio-quickfix.actions')
+local diagnostics = require('scala-hints.diagnostics')
+local actions = require('scala-hints.actions')
 
 local M = {}
 
