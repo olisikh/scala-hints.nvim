@@ -6,39 +6,44 @@
 The project is currently in a "sandbox" state, serving as a learning project for Neovim plugin development and ZIO code optimization.
 
 ## 2. Technical Architecture
-The plugin follows a modular architecture, integrating with `none-ls` (formerly `null-ls`) to provide diagnostics and code actions.
+The plugin follows a modular architecture: `init.lua` registers Metals-gated autocommands and wraps the LSP code-action handler so both diagnostics and actions share the same query engine and feed Neovim's native APIs.
 
 ### ASCII Architecture Diagram
 ```text
 +-------------------------------------------------------+
 |                    Neovim (Lua)                       |
 +-------------------------------------------------------+
-           |                                 ^
-           v                                 |
-+-----------------------+         +---------------------+
-|       none-ls         | <-----> |  scala-hints.nvim   |
-+-----------------------+         +---------------------+
-           |                         |         |
-           |                         v         v
-           |               +------------+   +------------+
-           |               | Treesitter |   | Metals LSP |
-           |               +------------+   +------------+
-           |                         |         |
-           +-------------------------+---------+
+          |                                 |
+          v                                 v
++-------------------------+       +------------------------+
+| diagnostics autocommand |       | LSP code-action wrapper |
++-------------------------+       +------------------------+
+          |                                 |
+          v                                 v
++-------------------------+       +------------------------+
+|    diagnostics.lua      |       |      actions.lua       |
++-------------------------+       +------------------------+
+          \                                 /
+           +--------------+----------------+
+                          |
+                     [query.run_query]
+                          |
+             +------------+------------+
+             |                         |
+   vim.diagnostic.set(...)    vim.lsp.handlers['textDocument/codeAction']
 ```
 
 ### Dependency Graph
 - `nvim-lua/plenary.nvim`: Async utilities and general helpers.
 - `nvim-treesitter/nvim-treesitter`: AST parsing and query execution.
 - `scalameta/nvim-metals`: Type information via LSP.
-- `nvimtools/none-ls.nvim`: Integration for diagnostics and code actions.
 
 ## 3. File Structure & Purpose
 The codebase is organized into six primary Lua modules:
 
 | Module | Purpose |
 | :--- | :--- |
-| `init.lua` | Entry point; registers diagnostics and code action sources with `none-ls`. |
+| `init.lua` | Entry point; registers the diagnostic namespace, Metals-gated autocommands, and the code-action wrapper that injects scala-hints replacements into the native handler. |
 | `diagnostics.lua` | Orchestrates diagnostic collection by running Treesitter queries. |
 | `actions.lua` | Resolves available code actions for a given range. |
 | `query.lua` | Contains all Treesitter query definitions and their respective handlers. |
@@ -48,31 +53,30 @@ The codebase is organized into six primary Lua modules:
 ## 4. Query Handler Flow
 The core logic resides in the interaction between `diagnostics`/`actions` and `query.lua`.
 
-1. **Trigger**: `none-ls` calls the registered generator.
-2. **Preparation**: `init.lua` waits for Metals to signal readiness (via the `User MetalsReady` / `MetalsInitialized` autocommands) before registering the generators.
-3. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over a list of query names.
+1. **Trigger**: The `User MetalsReady` / `MetalsInitialized` autocommands ensure the diagnostic autocommand and LSP code-action wrapper are registered once Metals is ready.
+2. **Preparation**: `init.lua` gates execution on Metals readiness per buffer, resetting the namespace and collecting active clients before running the queries.
+3. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over the query list for the requested range or file scope.
 4. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
-5. **Handling**: For each match, the specific `handler` in `query.lua` is invoked.
+5. **Handling**: For each match, the specific handler in `query.lua` is invoked.
 6. **Verification**: Handlers may use `utils.hover_node_and_match` to verify types via Metals LSP.
-7. **Result**: Diagnostics or code actions are returned to `none-ls`.
+7. **Result**: Diagnostics feed `vim.diagnostic.set()` while code-action payloads flow through the wrapped `vim.lsp.handlers['textDocument/codeAction']`.
 
 ### ASCII Query Handler Diagram
 ```text
-[none-ls] -> [init.lua] -> [diagnostics.lua]
-                                 |
-                                 v
-                          [query.run_query]
-                                 |
-                +----------------+----------------+
-                |                                 |
-        [Treesitter Match]                [Handler Invocation]
-                |                                 |
-                v                                 v
-        (AST Nodes)                      [utils.hover_node] -> [Metals LSP]
-                                                 |
-                                                 v
-                                         (Diagnostic/Action)
+[diagnostics autocommand]          [LSP code-action wrapper]
+             |                                |
+             v                                v
+     [diagnostics.lua]                [actions.lua]
+             |                                |
+             +---------------+----------------+
+                             |
+                     [query.run_query]
+                             |
+            +----------------+----------------+
+            |                                 |
+vim.diagnostic.set(...)       vim.lsp.handlers['textDocument/codeAction']
 ```
+
 
 ## 5. Pattern Catalog
 The following table lists the patterns currently defined in `query.lua`.
@@ -165,7 +169,7 @@ To add a new pattern to the plugin:
 - **Test Coverage**: 0%
 
 ## 12. Known Limitations
-- Relies heavily on `none-ls`, which is in maintenance mode.
+- Relies on Metals and Neovim APIs; changes to either stack may require adjustments.
 - Performance may degrade on files with thousands of lines due to lack of caching.
 - Limited to Scala language and ZIO framework.
 
@@ -196,5 +200,5 @@ The plugin uses `vim.lsp.buf_request` with the `textDocument/hover` method. The 
 ## 17. Maintenance Checklist
 - [ ] Verify Metals compatibility after Metals updates.
 - [ ] Check for Treesitter grammar changes in `tree-sitter-scala`.
-- [ ] Monitor `none-ls` for breaking changes.
+- [ ] Monitor Metals and Neovim LSP/diagnostic APIs for breaking changes.
 - [ ] Update Pattern Catalog when new handlers are added.

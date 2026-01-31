@@ -1,6 +1,6 @@
 # scala-hints.nvim
 
-Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. It leans on Treesitter for precise AST matching, Metals for type insight, and `none-ls` for delivering hints and code actions without extra ceremony.
+Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. It leans on Treesitter for precise AST matching, Metals for type insight, and native Neovim diagnostics / LSP hooks for delivering hints and code actions without extra ceremony.
 
 ## Snapshot
 
@@ -9,12 +9,12 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 | **Status** | Sandbox/learning project—use at your own risk. |
 | **Lines of Lua** | 1,557 total; `lua/scala-hints/query.lua` is the pattern-heavy core (~1,135 lines). |
 | **Test Coverage** | 0% (no automated tests yet). |
-| **Dependencies** | `plenary.nvim`, `nvim-treesitter`, `nvim-metals`, `none-ls.nvim`. |
+| **Dependencies** | `plenary.nvim`, `nvim-treesitter`, `nvim-metals`. |
 | **Primary Goal** | Detect common ZIO code smells and offer idiomatic replacements (e.g., `.map(_ => ())` → `.unit`). |
 
 ## Features
 
-- **Null-ls diagnostics & code actions**: Registers asynchronous diagnostics and code action generators that reuse the same query list for consistency.
+- **Native diagnostics & code actions**: Hooks Neovim autocommands and `vim.lsp.handlers` to reuse the same query list, pushing results through `vim.diagnostic.set()` and the native code-action plumbing.
 - **Metals-aware validation**: `utils.hover_node_and_match` inspects the hover response to ensure replacements apply to actual ZIO nodes.
 - **Async humble flow**: Every query runs via `plenary.async`; `run_or_timeout` and dedicated timeouts (10s for Metals readiness, 10s for actions, 30s for diagnostics) keep prompts responsive.
 - **Pattern catalog**: 24 Treesitter patterns (20 implemented + 4 placeholders) target constructors, combinators, error handling, type aliases, and `Option`/`Either` helpers—full details live in `AGENTS.md`.
@@ -23,38 +23,38 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 
 ```text
 +------------------------------------------------------------------+
-|                               Neovim                             |
-|                  (placeholder for user-facing config)            |
-+--------------------------------------+---------------------------+
-                         |                                      |
-                         v                                      v
-            null-ls (diagnostics source)        null-ls (code action source)
-                         |                                      |
-                         v                                      v
-             diagnostics.collect_diagnostics        actions.resolve_actions
-                         |                                      |
-                         +---------------+----------------------+ 
-                                         v
-                                 query.run_query (Treesitter)
-                                         |
-                        +----------------+------------------+
-                        |                                   |
-                  Treesitter match                     Handler invocation
-                        |                                   |
-                        v                                   v
-            AST nodes + captures                Hover guards → diagnostic + replacement
+|                             Neovim                               |
+|    (BufWritePost/BufEnter autocommands + LSP code-action hooks)  |
++------------------------+--------------------------+--------------+
+           |                         |
+           v                         v
+diagnostics autocommand   intercepted LSP handler
+           |                         |
+           v                         v
+diagnostics.collect_diagnostics   actions.resolve_actions
+           |                         |
+           +------------+------------+
+                        |
+                query.run_query (Treesitter)
+                        |
+               +--------+--------+
+               |                 |
+     Handler invocation   Handler invocation
+               |                 |
+               v                 v
+vim.diagnostic.set(...)    vim.lsp.handlers['textDocument/codeAction']
 ```
 
 ### Module Responsibilities
 
 | File | Responsibility |
 | --- | --- |
-| `lua/scala-hints/init.lua` | Registers the null-ls diagnostics & code action generators once Metals signals readiness via the `User MetalsReady` / `MetalsInitialized` autocommands. |
-| `lua/scala-hints/diagnostics.lua` | Iterates over the query list, joins all async results, flattens diagnostics, and returns them to `none-ls`. |
-| `lua/scala-hints/actions.lua` | Mirrors the diagnostics flow, generating quickfix actions that replace target ranges with handler-provided replacements. |
+| `lua/scala-hints/init.lua` | Registers the diagnostic namespace, Metals-gated autocommands, and the LSP code-action wrapper that injects scala-hints replacements into the native handler. |
+| `lua/scala-hints/diagnostics.lua` | Iterates over the query list, joins all async results, and returns native diagnostics that `init.lua` feeds to `vim.diagnostic.set()`. |
+| `lua/scala-hints/actions.lua` | Mirrors the diagnostics flow, building range/replacement payloads that `init.lua` exposes through the wrapped code-action handler. |
 | `lua/scala-hints/query.lua` | Houses every Treesitter query and handler pair; categories include constructor simplifications, combinator optimizations, error-handling helpers, `ZIO`/`ZLayer` type rewrites, and `Option`/`Either` helpers. Placeholders (`exit_code*`, `zio_die`) note unfinished work. |
 | `lua/scala-hints/utils.lua` | Utility functions for async racing, Metals readiness polling, node inspection, flattening arrays, hover verification, and traversal helpers. |
-| `lua/scala-hints/constants.lua` | Shared metadata such as the `null-ls` source name (`null-ls-scala`) and target filetype (`scala`). |
+| `lua/scala-hints/constants.lua` | Shared metadata such as the diagnostic namespace name (`scala-hints`) and target filetype (`scala`). |
 
 ## Pattern Highlights
 
@@ -78,7 +78,6 @@ Every handler returns a payload that populates both diagnostics and code actions
     'nvim-lua/plenary.nvim',
     'nvim-treesitter/nvim-treesitter',
     'scalameta/nvim-metals',
-    'nvimtools/none-ls.nvim',
   },
 }
 ```
@@ -127,7 +126,6 @@ Per [`TODO.md`](TODO.md) and the `AGENTS.md` plan:
 
 - [ZIO Documentation](https://zio.dev/)
 - [IntelliJ ZIO Plugin (Igal Tabachnik)](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features)
-- [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim)
 - [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
 - [nvim-metals](https://github.com/scalameta/nvim-metals)
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
