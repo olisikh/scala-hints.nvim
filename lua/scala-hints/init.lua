@@ -9,26 +9,6 @@ local M = {}
 
 local diag_ns
 
-local function to_code_action_entry(action, bufnr)
-  if not (action and action.title and bufnr) then
-    return nil
-  end
-
-  return {
-    title = action.title,
-    kind = 'refactor',
-    command = {
-      title = action.title,
-      command = 'scala-hints.apply',
-      arguments = {
-        action.replacement,
-        bufnr,
-        action.range,
-      },
-    },
-  }
-end
-
 local function register_apply_command()
   vim.lsp.commands['scala-hints.apply'] = function(command)
     local args = command.arguments or {}
@@ -70,70 +50,136 @@ local function register_apply_command()
 end
 
 local code_action_configured = false
-local function configure_code_action_handler()
+local function setup_code_actions()
   if code_action_configured then
     return
   end
 
-  logger.info('Registering code actions apply command (whatever that is)')
+  logger.info('Registering scala-hints code actions')
 
   code_action_configured = true
   register_apply_command()
 
-  local original_handler = vim.lsp.handlers['textDocument/codeAction']
-  logger.info('Original handler before override: ' .. (original_handler and 'exists' or 'nil'))
-  
-  vim.lsp.handlers['textDocument/codeAction'] = function(err, result, ctx, config)
-    logger.info('HANDLER INVOKED: textDocument/codeAction')
-    logger.info('Resolving code actions')
+  local original_code_action = vim.lsp.buf.code_action
 
-    local merged = {}
-    local seen_titles = {}
+  vim.lsp.buf.code_action = function(context)
+    local bufnr = vim.api.nvim_get_current_buf()
+    logger.info('vim.lsp.buf.code_action called for buffer ' .. bufnr)
 
-    if vim.tbl_islist(result) then
-      for _, entry in ipairs(result) do
-        table.insert(merged, entry)
-        if type(entry) == 'table' and entry.title then
-          seen_titles[entry.title] = true
-        end
-      end
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      logger.info('Buffer is not valid')
+      return
     end
 
-    local function append_scala_actions(actions_list)
-      local resolved_count = actions_list and #actions_list or 0
-      logger.info('Resolved ' .. resolved_count .. ' code actions')
+    local params = vim.lsp.util.make_range_params()
+    if not params.range then
+      logger.info('No range available')
+      return
+    end
 
-      if actions_list and vim.tbl_islist(actions_list) then
-        for _, action in ipairs(actions_list) do
-          if action and action.title and not seen_titles[action.title] then
-            local entry = to_code_action_entry(action, ctx and ctx.bufnr)
-            if entry then
-              table.insert(merged, entry)
-              seen_titles[action.title] = true
+    params.context = {
+      diagnostics = vim.diagnostic.get(bufnr),
+    }
+
+    local start_line = params.range.start.line
+    local end_line = params.range['end'].line
+
+    local items = {}
+    local pending_requests = 0
+
+    local function show_code_actions()
+      if #items > 0 then
+        vim.ui.select(items, {
+          prompt = 'Code Actions:',
+          format_item = function(item)
+            return '[' .. item.source .. '] ' .. item.title
+          end,
+        }, function(selected)
+          if selected then
+            if selected.is_scala_hints then
+              logger.info('Applying scala-hints action: ' .. selected.title)
+              vim.api.nvim_buf_set_text(
+                bufnr,
+                selected.range.start.line,
+                selected.range.start.character,
+                selected.range['end'].line,
+                selected.range['end'].character,
+                { selected.replacement }
+              )
+            elseif selected.is_lsp then
+              logger.info('Executing ' .. selected.source .. ' action: ' .. selected.title)
+              logger.info('Action details: command=' .. vim.inspect(selected.command) .. ', edit=' .. vim.inspect(selected.edit))
+              
+              if selected.edit then
+                logger.info('Applying workspace edit')
+                vim.lsp.util.apply_workspace_edit(selected.edit, selected.client.offset_encoding or 'utf-16')
+              elseif selected.command then
+                logger.info('Executing command: ' .. vim.inspect(selected.command))
+                vim.lsp.buf.execute_command(selected.command)
+              end
             end
           end
+        end)
+      else
+        vim.notify('No code actions available', vim.log.levels.INFO)
+      end
+    end
+
+    actions.resolve_actions(bufnr, start_line, end_line, function(scala_actions)
+      logger.info('Resolved ' .. (scala_actions and #scala_actions or 0) .. ' scala-hints code actions')
+
+      if scala_actions then
+        for _, action in ipairs(scala_actions) do
+          table.insert(items, {
+            title = action.title,
+            range = action.range,
+            replacement = action.replacement,
+            source = 'scala-hints',
+            is_scala_hints = true,
+          })
         end
       end
 
-      if original_handler then
-        original_handler(err, merged, ctx, config)
+      local clients = vim.lsp.get_clients({ bufnr = bufnr })
+      logger.info('Found ' .. #clients .. ' LSP clients')
+
+      for _, client in ipairs(clients) do
+        if client.supports_method('textDocument/codeAction') then
+          pending_requests = pending_requests + 1
+          logger.info('Requesting code actions from ' .. client.name)
+
+          client.request('textDocument/codeAction', params, function(err, lsp_actions)
+            if err then
+              logger.info('Error from ' .. client.name .. ': ' .. vim.inspect(err))
+            elseif lsp_actions and vim.tbl_islist(lsp_actions) then
+              logger.info(client.name .. ' returned ' .. #lsp_actions .. ' code actions')
+              for _, action in ipairs(lsp_actions) do
+                if type(action) == 'table' and action.title then
+                  logger.info('Action from ' .. client.name .. ': ' .. vim.inspect(action))
+                  table.insert(items, {
+                    title = action.title,
+                    command = action.command,
+                    edit = action.edit,
+                    client = client,
+                    source = client.name,
+                    is_lsp = true,
+                  })
+                end
+              end
+            end
+
+            pending_requests = pending_requests - 1
+            if pending_requests == 0 then
+              show_code_actions()
+            end
+          end)
+        end
       end
-    end
 
-    if not (ctx and ctx.bufnr and ctx.params and ctx.params.range) then
-      append_scala_actions(nil)
-      return
-    end
-
-    local bufnr = ctx.bufnr
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-      append_scala_actions(nil)
-      return
-    end
-
-    local request_range = ctx.params.range
-
-    actions.resolve_actions(bufnr, request_range.start.line, request_range['end'].line, append_scala_actions)
+      if pending_requests == 0 then
+        show_code_actions()
+      end
+    end)
   end
 end
 
@@ -145,7 +191,7 @@ local function ensure_diag_ns()
   diag_ns = vim.api.nvim_create_namespace(constants.diagnostic_namespace)
   M.diag_ns = diag_ns
 
-  configure_code_action_handler()
+  setup_code_actions()
 
   local diag_group = vim.api.nvim_create_augroup('ScalaHintsDiagnostics', { clear = true })
 

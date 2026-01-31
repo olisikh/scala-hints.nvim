@@ -88,7 +88,11 @@ Call `require('scala-hints').setup()` after loading dependencies. Ensure Metals 
 
 - Open a Scala file where Metals is ready.
 - Diagnostics appear as hints (`Hint` severity) summarizing the code smell plus the suggested replacement.
-- Use `:lua vim.lsp.buf.code_action()` or `:copen` to apply the quickfixes generated from the same queries.
+- Use `:lua vim.lsp.buf.code_action()` or bind it to a key to see scala-hints code actions:
+  ```lua
+  vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action, { noremap = true })
+  ```
+- View diagnostics with `:copen` or your diagnostic picker.
 - If hints disappear after undoing, rerun diagnostics (or reopen the buffer) until the rebuild is addressed upstream.
 
 ## Roadmap & TODOs
