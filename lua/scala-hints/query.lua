@@ -1092,16 +1092,7 @@ local function normalize_handler_result(res)
   -- assume old style list
   return { ready = res, pending = {} }
 end
----
---- Executes a query on a given buffer and returns the results.
---- @param opts (table) The options for running the query.
----   - bufnr (number, optional): The buffer number to run the query on. Defaults to the current buffer.
----   - start_line (number, optional): The starting line for the query. Defaults to 0.
----   - end_line (number, optional): The ending line for the query. Defaults to the total number of lines in the buffer.
----   - root (table): The root object for the query.
----   - handler (function): The handler function to process query results.
----   - query_name (string): The name of the query to run.
---- @return function callback
+
 function M.run_query(opts)
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
 
@@ -1112,56 +1103,73 @@ function M.run_query(opts)
   local callback = opts.callback
 
   return function(cb)
-    --- @type table
-    ---   - query (vim.treesitter.Query) - compiled treesitter query
-    ---   - handler (function) - function that knows how to collect results of the match
-    local query = queries[opts.query_name]
-    if query == nil then
-      return callback({})
+    local q = queries[opts.query_name]
+    if q == nil then
+      return cb({})
     end
 
-    local ok, query_results = pcall(function()
-      return query.query:iter_matches(root, bufnr, start_line, end_line + 1)
+    local ok_iter, iter_or_err = pcall(function()
+      return q.query:iter_matches(root, bufnr, start_line, end_line + 1)
     end)
+
+    if not ok_iter then
+      vim.notify('Query ' .. opts.query_name .. ' failed: ' .. tostring(iter_or_err), vim.log.levels.WARN)
+      return cb({})
+    end
 
     local results = {}
     local pending = {}
 
-    if ok then
-      for _, matches, _ in query_results do
-        local ok2, res = pcall(query.handler, bufnr, matches)
+    for _, matches, _ in iter_or_err do
+      local ok_handler, res_or_err = pcall(q.handler, bufnr, matches)
 
-        if ok2 then
-          local norm = normalize_handler_result(res)
+      if not ok_handler then
+        vim.notify('Query ' .. opts.query_name .. ' handler failed: ' .. tostring(res_or_err), vim.log.levels.WARN)
+      else
+        local norm = normalize_handler_result(res_or_err)
 
-          for _, item in ipairs(norm.ready) do
-            table.insert(results, callback(item))
+        -- immediate items
+        for _, item in ipairs(norm.ready) do
+          local ok_cb, out = pcall(callback, item)
+          if ok_cb then
+            table.insert(results, out)
+          else
+            vim.notify('Query ' .. opts.query_name .. ' callback failed: ' .. tostring(out), vim.log.levels.WARN)
           end
+        end
 
-          for _, thunk in ipairs(norm.pending) do
-            table.insert(pending, thunk)
-          end
-        else
-          vim.notify('Query ' .. opts.query_name .. ' handler failed: ' .. res)
+        -- pending thunks: function(publish_item) ... end
+        for _, thunk in ipairs(norm.pending) do
+          table.insert(pending, thunk)
         end
       end
-    else
-      vim.notify('Query ' .. opts.query_name .. ' failed ' .. query_results, vim.log.levels.WARN)
     end
 
-    -- publish immediate
+    -- Return ready batch immediately
     cb(results)
 
-    -- publish async results later
+    -- Publish late items as they resolve (async)
     for _, thunk in ipairs(pending) do
-      thunk(function(item)
-        -- IMPORTANT: callback(item) likely publishes diagnostics
-        -- If callback only *transforms*, then adapt this to publish properly.
-        callback(item)
-      end)
-    end
+      local ok_thunk, err = pcall(thunk, function(item)
+        local ok_cb, out = pcall(callback, item)
+        if not ok_cb then
+          vim.notify('Query ' .. opts.query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
+          return
+        end
 
-    return
+        -- IMPORTANT:
+        -- We do NOT call cb() again here.
+        -- If your "callback" only transforms and you need to re-feed results somewhere,
+        -- we’ll adjust this (see note below).
+        --
+        -- In many plugins, callback(item) *publishes* diagnostics/actions directly,
+        -- so calling it here is sufficient.
+      end)
+
+      if not ok_thunk then
+        vim.notify('Query ' .. opts.query_name .. ' pending thunk failed: ' .. tostring(err), vim.log.levels.WARN)
+      end
+    end
   end
 end
 

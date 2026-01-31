@@ -49,7 +49,7 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 
 | File | Responsibility |
 | --- | --- |
-| `lua/scala-hints/init.lua` | Registers the null-ls diagnostics & code action generators and waits for Metals to initialize via `utils.ensure_metals`. |
+| `lua/scala-hints/init.lua` | Registers the null-ls diagnostics & code action generators once Metals signals readiness via the `User MetalsReady` / `MetalsInitialized` autocommands. |
 | `lua/scala-hints/diagnostics.lua` | Iterates over the query list, joins all async results, flattens diagnostics, and returns them to `none-ls`. |
 | `lua/scala-hints/actions.lua` | Mirrors the diagnostics flow, generating quickfix actions that replace target ranges with handler-provided replacements. |
 | `lua/scala-hints/query.lua` | Houses every Treesitter query and handler pair; categories include constructor simplifications, combinator optimizations, error-handling helpers, `ZIO`/`ZLayer` type rewrites, and `Option`/`Either` helpers. Placeholders (`exit_code*`, `zio_die`) note unfinished work. |
@@ -111,7 +111,7 @@ Per [`TODO.md`](TODO.md) and the `AGENTS.md` plan:
 
 ## Troubleshooting
 
-- Ensure Metals attaches quickly—`utils.ensure_metals` retries every second until it finds the client.
+- Ensure Metals attaches quickly—the plugin waits for the `User MetalsReady` (and `MetalsInitialized`) autocommands before registering its hints, so Metals must signal readiness for diagnostics/actions to appear.
 - Large files rerun all queries per invocation; consider future caching to reduce CPU pressure.
 - When false positives surface, inspect `AGENTS.md` to understand whether the handler consults Metals (`utils.hover_node_and_match`) or not.
 

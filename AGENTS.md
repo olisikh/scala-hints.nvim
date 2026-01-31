@@ -49,7 +49,7 @@ The codebase is organized into six primary Lua modules:
 The core logic resides in the interaction between `diagnostics`/`actions` and `query.lua`.
 
 1. **Trigger**: `none-ls` calls the registered generator.
-2. **Preparation**: `init.lua` ensures Metals is ready (via `utils.ensure_metals`).
+2. **Preparation**: `init.lua` waits for Metals to signal readiness (via the `User MetalsReady` / `MetalsInitialized` autocommands) before registering the generators.
 3. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over a list of query names.
 4. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
 5. **Handling**: For each match, the specific `handler` in `query.lua` is invoked.
@@ -107,7 +107,7 @@ The following table lists the patterns currently defined in `query.lua`.
 ## 6. Technical Details
 - **Treesitter Query Syntax**: Uses S-expressions for AST matching. Handlers often use `#eq?` and `#any-of?` predicates.
 - **Async Handling**: Utilizes `plenary.async` for non-blocking LSP requests and query execution.
-- **Metals Readiness**: `utils.ensure_metals` polls for the Metals client and its `initialized` state.
+- **Metals Readiness**: The plugin waits for Metals to emit the `User MetalsReady` / `MetalsInitialized` events before registering diagnostics/code actions.
 - **Timeouts**:
     - Diagnostics collection: 30 seconds.
     - Metals readiness check: 10 seconds.

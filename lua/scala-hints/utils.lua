@@ -22,30 +22,6 @@ M.run_or_timeout = function(func, timeout)
   })
 end
 
--- TODO: implement metals progress messages parsing, expecting for when the indexing is over to then kick off
--- diagnostics collection
---
----Makes sure metals is ready
----@param bufnr integer buffer number
----@return vim.lsp.Client metals client
-M.ensure_metals = function(bufnr)
-  local clients = vim.lsp.get_clients({ bufnr = bufnr, name = 'metals' })
-
-  if #clients == 0 then
-    async.util.sleep(1000)
-    return M.ensure_metals(bufnr)
-  else
-    local metals = clients[1]
-
-    if not metals or not metals.initialized then
-      async.util.sleep(1000)
-      return M.ensure_metals(bufnr)
-    else
-      return metals
-    end
-  end
-end
-
 M.deep_merge = function(tbl, ext)
   return vim.tbl_deep_extend('error', tbl, ext)
 end
