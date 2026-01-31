@@ -1,4 +1,5 @@
 local utils = require('scala-hints.utils')
+local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
 local zio_predicate = function(value)
@@ -25,33 +26,32 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local finish = matches[3]
+      local target = matches[2][1]
+      local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'unit',
+        title = 'ZIO: replace .map(_ => ()) with .unit',
+      }
 
-      -- if is_zio then
+      -- return as pending, do not block here
       return {
-        {
-          diagnostic = {
-            row = start_row,
-            start_col = start_col,
-            end_col = end_col,
-          },
-          action = {
-            start_row = start_row,
-            start_col = start_col,
-            end_row = end_row,
-            end_col = end_col,
-          },
-          replacement = 'unit',
-          title = 'ZIO: replace ZIO.succeed(()) with ZIO.unit',
+        ready = {},
+        pending = {
+          function(publish)
+            semantic.hover_predicate(bufnr, target, zio_predicate, function(is_zio)
+              if is_zio then
+                publish(item)
+              end
+            end)
+          end,
         },
       }
-      -- end
     end,
   },
 
@@ -69,9 +69,9 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[3]
-      local exception = matches[4]
-      local finish = matches[5]
+      local start = matches[3][1]
+      local exception = matches[4][1]
+      local finish = matches[5][1]
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -112,8 +112,8 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local finish = matches[3]
+      local target = matches[2][1]
+      local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -160,8 +160,8 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local finish = matches[5]
+      local start = matches[1][1]
+      local finish = matches[5][1]
 
       local _, _, start_row, start_col = start:range()
       local dstart_row, dstart_col, end_row, end_col = finish:range()
@@ -204,8 +204,8 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local finish = matches[3]
+      local target = matches[2][1]
+      local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -250,10 +250,10 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local target = matches[5]
-      local value = matches[6]
-      local finish = matches[7]
+      local start = matches[1][1]
+      local target = matches[5][1]
+      local value = matches[6][1]
+      local finish = matches[7][1]
 
       local _, _, start_row, start_col = start:range()
       local dstart_row, dstart_col, _, _ = target:range()
@@ -300,10 +300,10 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local target = matches[2]
-      local value = matches[3]
-      local finish = matches[4]
+      local start = matches[1][1]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
 
       local _, _, start_row, start_col = start:range()
       local dstart_row, dstart_col, _, _ = target:range()
@@ -350,10 +350,10 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local target = matches[2]
-      local value = matches[3]
-      local finish = matches[4]
+      local start = matches[1][1]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
 
       local _, _, start_row, start_col = start:range()
       local dstart_row, dstart_col, _, _ = target:range()
@@ -401,9 +401,9 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local value = matches[3]
-      local finish = matches[4]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -456,9 +456,9 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[1]
-      local value = matches[4]
-      local finish = matches[5]
+      local target = matches[1][1]
+      local value = matches[4][1]
+      local finish = matches[5][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -510,11 +510,11 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local foreach_fun = matches[2]
-      local collection = matches[4]
-      local value = matches[6]
-      local finish = matches[7]
+      local start = matches[1][1]
+      local foreach_fun = matches[2][1]
+      local collection = matches[4][1]
+      local value = matches[6][1]
+      local finish = matches[7][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -567,8 +567,8 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local finish = matches[3]
+      local target = matches[2][1]
+      local finish = matches[3][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -611,9 +611,9 @@ local queries = {
 ) @_4
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local value = matches[3]
-      local finish = matches[4]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -666,9 +666,9 @@ local queries = {
 ) 
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local value = matches[6]
-      local finish = matches[7]
+      local target = matches[2][1]
+      local value = matches[6][1]
+      local finish = matches[7][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -721,9 +721,9 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[2]
-      local value = matches[4]
-      local finish = matches[5]
+      local target = matches[2][1]
+      local value = matches[4][1]
+      local finish = matches[5][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -775,12 +775,12 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local finish = matches[5]
+      local start = matches[1][1]
+      local finish = matches[5][1]
 
-      local r_value = utils.get_node_text(bufnr, matches[2])
-      local e_value = utils.get_node_text(bufnr, matches[3])
-      local a_value = utils.get_node_text(bufnr, matches[4])
+      local r_value = utils.get_node_text(bufnr, matches[2][1])
+      local e_value = utils.get_node_text(bufnr, matches[3][1])
+      local a_value = utils.get_node_text(bufnr, matches[4][1])
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -840,12 +840,12 @@ local queries = {
 ]]),
 
     handler = function(bufnr, matches)
-      local start = matches[1]
-      local finish = matches[5]
+      local start = matches[1][1]
+      local finish = matches[5][1]
 
-      local r_value = utils.get_node_text(bufnr, matches[2])
-      local e_value = utils.get_node_text(bufnr, matches[3])
-      local a_value = utils.get_node_text(bufnr, matches[4])
+      local r_value = utils.get_node_text(bufnr, matches[2][1])
+      local e_value = utils.get_node_text(bufnr, matches[3][1])
+      local a_value = utils.get_node_text(bufnr, matches[4][1])
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -912,9 +912,9 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[3]
-      local value = matches[9]
-      local finish = matches[10]
+      local start = matches[3][1]
+      local value = matches[9][1]
+      local finish = matches[10][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -960,10 +960,10 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[3]
-      local value = matches[5]
-      local expr = matches[6]
-      local finish = matches[7]
+      local start = matches[3][1]
+      local value = matches[5][1]
+      local expr = matches[6][1]
+      local finish = matches[7][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -1013,16 +1013,16 @@ local queries = {
 )
 ]]),
     handler = function(bufnr, matches)
-      local start = matches[3]
+      local start = matches[3][1]
 
-      local either = matches[4]
-      local cats_either = matches[7]
+      local either = matches[4][1]
+      local cats_either = matches[7][1]
 
-      local value = matches[5]
-      local cats_value = matches[6]
+      local value = matches[5][1]
+      local cats_value = matches[6][1]
 
-      local expr = matches[8]
-      local finish = matches[9]
+      local expr = matches[8][1]
+      local finish = matches[9][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -1078,6 +1078,20 @@ local queries = {
 
 local M = {}
 
+local function normalize_handler_result(res)
+  -- old style: array
+  if res == nil then
+    return { ready = {}, pending = {} }
+  end
+  if res.ready ~= nil or res.pending ~= nil then
+    return {
+      ready = res.ready or {},
+      pending = res.pending or {},
+    }
+  end
+  -- assume old style list
+  return { ready = res, pending = {} }
+end
 ---
 --- Executes a query on a given buffer and returns the results.
 --- @param opts (table) The options for running the query.
@@ -1111,24 +1125,43 @@ function M.run_query(opts)
     end)
 
     local results = {}
+    local pending = {}
 
     if ok then
       for _, matches, _ in query_results do
-        local ok, items = pcall(query.handler, bufnr, matches)
+        local ok2, res = pcall(query.handler, bufnr, matches)
 
-        if ok then
-          for _, item in ipairs(items) do
+        if ok2 then
+          local norm = normalize_handler_result(res)
+
+          for _, item in ipairs(norm.ready) do
             table.insert(results, callback(item))
           end
+
+          for _, thunk in ipairs(norm.pending) do
+            table.insert(pending, thunk)
+          end
         else
-          vim.notify('Query ' .. opts.query_name .. ' handler failed: ' .. items)
+          vim.notify('Query ' .. opts.query_name .. ' handler failed: ' .. res)
         end
       end
     else
       vim.notify('Query ' .. opts.query_name .. ' failed ' .. query_results, vim.log.levels.WARN)
     end
 
-    return cb(results)
+    -- publish immediate
+    cb(results)
+
+    -- publish async results later
+    for _, thunk in ipairs(pending) do
+      thunk(function(item)
+        -- IMPORTANT: callback(item) likely publishes diagnostics
+        -- If callback only *transforms*, then adapt this to publish properly.
+        callback(item)
+      end)
+    end
+
+    return
   end
 end
 
