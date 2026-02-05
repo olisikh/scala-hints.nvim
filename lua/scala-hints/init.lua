@@ -1,13 +1,15 @@
-local vim = vim
+local vim = _G.vim
 local constants = require('scala-hints.constants')
 local diagnostics = require('scala-hints.diagnostics')
 local actions = require('scala-hints.actions')
+local client = require('scala-hints.client')
 local logger = require('scala-hints.logger').new('init')
-local async = require('plenary.async')
 
 local M = {}
 
 local diag_ns
+local lifecycle_autocmds_configured = false
+local lifecycle_group
 
 local function register_apply_command()
   vim.lsp.commands['scala-hints.apply'] = function(command)
@@ -60,9 +62,7 @@ local function setup_code_actions()
   code_action_configured = true
   register_apply_command()
 
-  local original_code_action = vim.lsp.buf.code_action
-
-  vim.lsp.buf.code_action = function(context)
+  vim.lsp.buf.code_action = function(_)
     local bufnr = vim.api.nvim_get_current_buf()
     logger.info('vim.lsp.buf.code_action called for buffer ' .. bufnr)
 
@@ -109,7 +109,7 @@ local function setup_code_actions()
             elseif selected.is_lsp then
               logger.info('Executing ' .. selected.source .. ' action: ' .. selected.title)
               logger.info('Action details: command=' .. vim.inspect(selected.command) .. ', edit=' .. vim.inspect(selected.edit))
-              
+
               if selected.edit then
                 logger.info('Applying workspace edit')
                 vim.lsp.util.apply_workspace_edit(selected.edit, selected.client.offset_encoding or 'utf-16')
@@ -143,25 +143,25 @@ local function setup_code_actions()
       local clients = vim.lsp.get_clients({ bufnr = bufnr })
       logger.info('Found ' .. #clients .. ' LSP clients')
 
-      for _, client in ipairs(clients) do
-        if client.supports_method('textDocument/codeAction') then
+      for _, lsp_client in ipairs(clients) do
+        if lsp_client.supports_method('textDocument/codeAction') then
           pending_requests = pending_requests + 1
-          logger.info('Requesting code actions from ' .. client.name)
+          logger.info('Requesting code actions from ' .. lsp_client.name)
 
-          client.request('textDocument/codeAction', params, function(err, lsp_actions)
+          lsp_client.request('textDocument/codeAction', params, function(err, lsp_actions)
             if err then
-              logger.info('Error from ' .. client.name .. ': ' .. vim.inspect(err))
+              logger.info('Error from ' .. lsp_client.name .. ': ' .. vim.inspect(err))
             elseif lsp_actions and vim.tbl_islist(lsp_actions) then
-              logger.info(client.name .. ' returned ' .. #lsp_actions .. ' code actions')
+              logger.info(lsp_client.name .. ' returned ' .. #lsp_actions .. ' code actions')
               for _, action in ipairs(lsp_actions) do
                 if type(action) == 'table' and action.title then
-                  logger.info('Action from ' .. client.name .. ': ' .. vim.inspect(action))
+                  logger.info('Action from ' .. lsp_client.name .. ': ' .. vim.inspect(action))
                   table.insert(items, {
                     title = action.title,
                     command = action.command,
                     edit = action.edit,
-                    client = client,
-                    source = client.name,
+                    client = lsp_client,
+                    source = lsp_client.name,
                     is_lsp = true,
                   })
                 end
@@ -181,6 +181,59 @@ local function setup_code_actions()
       end
     end)
   end
+end
+
+local function setup_lifecycle_autocmds()
+  if lifecycle_autocmds_configured then
+    return
+  end
+
+  lifecycle_autocmds_configured = true
+  lifecycle_group = vim.api.nvim_create_augroup('ScalaHintsLspLifecycle', { clear = true })
+
+  vim.api.nvim_create_autocmd('LspAttach', {
+    group = lifecycle_group,
+    callback = function(args)
+      local client_id = args.data and args.data.client_id
+      if not client_id then
+        return
+      end
+
+      local lsp_client = vim.lsp.get_client_by_id(client_id)
+      if not lsp_client or lsp_client.name ~= 'metals' then
+        return
+      end
+
+      local bufnr = args.buf
+      if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+      end
+
+      local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+      if filetype ~= constants.lang then
+        return
+      end
+
+      logger.info('Metals attached to buffer ' .. bufnr .. ', starting scala-hints virtual client')
+      client.start_virtual_client(bufnr)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ 'BufDelete', 'BufUnload' }, {
+    group = lifecycle_group,
+    callback = function(args)
+      local bufnr = args.buf
+      if not bufnr then
+        return
+      end
+
+      if client.get_client_id(bufnr) then
+        logger.info('Buffer ' .. bufnr .. ' unloaded, stopping scala-hints virtual client')
+      end
+
+      client.stop_virtual_client(bufnr)
+    end,
+  })
 end
 
 local function ensure_diag_ns()
@@ -226,8 +279,8 @@ local function ensure_diag_ns()
       local clients = vim.lsp.get_clients({ bufnr = bufnr })
       local metals_ready = false
 
-      for _, client in ipairs(clients) do
-        if client.name == 'metals' and client.initialized then
+      for _, lsp_client in ipairs(clients) do
+        if lsp_client.name == 'metals' and lsp_client.initialized then
           metals_ready = true
           break
         end
@@ -262,11 +315,12 @@ local function ensure_diag_ns()
 end
 
 --- Function to instantiate necessary namespace and autocommands
----@param opts table|nil options (reserved for future use)
+---@param _opts table|nil options (reserved for future use)
 ---@return table plugin object
 M.setup = function(_opts)
   logger.info('Module initializing')
   ensure_diag_ns()
+  setup_lifecycle_autocmds()
   logger.info('Handler registered: ' .. (vim.lsp.handlers['textDocument/codeAction'] and 'yes' or 'NO'))
   return M
 end
@@ -281,12 +335,26 @@ vim.api.nvim_create_autocmd('LspAttach', {
       return
     end
 
-    local buf_filetype = vim.api.nvim_buf_get_option(event.buf, 'filetype')
-    if buf_filetype == 'scala' then
-      logger.info('First Scala LSP attach detected, auto-initializing plugin')
-      auto_setup_done = true
-      M.setup()
+    local bufnr = event.buf
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+      return
     end
+
+    local buf_filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+    if buf_filetype ~= constants.lang then
+      return
+    end
+
+    local attached_client_id = event.data and event.data.client_id
+    local attached_client = attached_client_id and vim.lsp.get_client_by_id(attached_client_id)
+    if not attached_client or attached_client.name ~= 'metals' then
+      return
+    end
+
+    logger.info('First Metals attach to Scala buffer detected, auto-initializing plugin')
+    auto_setup_done = true
+    M.setup()
+    client.start_virtual_client(bufnr)
   end,
 })
 
