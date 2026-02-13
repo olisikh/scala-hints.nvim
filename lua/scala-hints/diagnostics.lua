@@ -1,6 +1,7 @@
 local async = require('plenary.async')
 local utils = require('scala-hints.utils')
 local query = require('scala-hints.query')
+local libs = require('scala-hints.libs')
 local constants = require('scala-hints.constants')
 local logger = require('scala-hints.logger').new('diagnostics')
 
@@ -31,7 +32,7 @@ function M.collect_diagnostics(bufnr, done)
     local end_line = vim.api.nvim_buf_line_count(bufnr)
 
     local queries = {}
-    for _, query_name in ipairs(constants.query_names) do
+    for query_name, query_def in pairs(libs.get_all_queries()) do
       table.insert(
         queries,
         async.wrap(
@@ -39,6 +40,7 @@ function M.collect_diagnostics(bufnr, done)
             bufnr = bufnr,
             root = root,
             query_name = query_name,
+            query_def = query_def,
             start_line = start_line,
             end_line = end_line,
             callback = make_diagnostic,

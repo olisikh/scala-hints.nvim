@@ -3,28 +3,4 @@ return {
   diagnostic_namespace = 'scala-hints',
   lang = 'scala',
   client_name = 'scala-hints',
-
-  --- All query names shared between diagnostics and code actions
-  query_names = {
-    'succeed_unit',
-    'fail_exception_or_die',
-    'map_unit',
-    'as_unit',
-    'zip_right_unit',
-    'zip_right_value',
-    'zip_left_value',
-    'flat_map_value',
-    'map_value',
-    'catch_all_unit',
-    'fold_cause_ignore',
-    'or_else_fail',
-    'or_else_fail2',
-    'or_else_fail3',
-    'zio_type',
-    'zlayer_type',
-    'zio_none',
-    'zio_some',
-    'zio_either',
-    'zio_foreach',
-  },
 }
