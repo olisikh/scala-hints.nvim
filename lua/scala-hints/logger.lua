@@ -14,7 +14,7 @@ local function ensure_log_dir()
     return true
   end
 
-  local stat = vim.loop.fs_stat(log_dir)
+  local stat = vim.uv.fs_stat(log_dir)
   if not stat then
     vim.fn.mkdir(log_dir, 'p')
   end
@@ -34,13 +34,13 @@ local function write_line(name, level_name, message)
   local bufnr = vim.api.nvim_get_current_buf()
   local timestamp = os.date('%Y-%m-%d %H:%M:%S')
   local formatted = string.format('%s [%s] (%s) %s - %s\n', timestamp, level_name, bufnr, name, message)
-  local fd = vim.loop.fs_open(path, 'a', 420)
+  local fd = vim.uv.fs_open(path, 'a', 420)
   if not fd then
     return
   end
 
-  vim.loop.fs_write(fd, formatted, -1)
-  vim.loop.fs_close(fd)
+  vim.uv.fs_write(fd, formatted, -1)
+  vim.uv.fs_close(fd)
 end
 
 local function flatten_message(message)

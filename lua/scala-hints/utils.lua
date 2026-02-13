@@ -87,9 +87,6 @@ M.hover_node_and_match = function(bufnr, node, predicate)
       and result.contents.value ~= nil
       and predicate(result.contents.value)
 
-    -- vim.print(result)
-    -- M.print_ts_node(bufnr, node)
-
     tx(is_zio)
   end)
 

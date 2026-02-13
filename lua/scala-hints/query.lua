@@ -3,15 +3,15 @@ local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
 local zio_predicate = function(value)
-  return string.find(value, 'ZIO') ~= nil -- TODO: match part of markdown?
+  return string.find(value, 'ZIO') ~= nil
 end
 
 local function parse_query(query)
   return ts.query.parse('scala', query)
 end
 
--- TODO: all #eq? against ZIO.succeed and ZIO.unit need to be broken down as it can be ZIO\n.unit ...
--- or alternatively can match against regex with \n and \s symbols in-between
+-- NOTE: #eq? against ZIO.succeed and ZIO.unit may miss cases where a newline
+-- separates `ZIO` from `.unit` (e.g. ZIO\n.unit).
 local queries = {
 
   -- ZIO.succeed(()) ~> ZIO.unit
@@ -144,10 +144,7 @@ local queries = {
     end,
   },
 
-  -- *> ZIO.unit        ~> .unit
-  -- TODO: if ZIO.succeed(()) is on the next line, treesitter renders it as a sibling to the function definition
-  -- example: def func = effect *>
-  --   ZIO.succeed(())
+  -- *> ZIO.unit ~> .unit
   zip_right_unit = {
     query = parse_query([[
 (infix_expression
@@ -168,9 +165,6 @@ local queries = {
 
       local replaced = utils.get_node_text(bufnr, finish)
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, finish, zio_predicate)
-
-      -- if is_zio then
       return {
         {
           diagnostic = {
@@ -188,7 +182,6 @@ local queries = {
           title = 'ZIO: replace *> ' .. replaced .. ' with .unit',
         },
       }
-      -- end
     end,
   },
 
@@ -210,9 +203,6 @@ local queries = {
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
-
-      -- if is_zio then
       return {
         {
           diagnostic = {
@@ -230,7 +220,6 @@ local queries = {
           title = 'ZIO: replace .as(()) with .unit',
         },
       }
-      -- end
     end,
   },
 
@@ -261,9 +250,6 @@ local queries = {
 
       local value_text = utils.get_node_text(bufnr, value)
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
-
-      -- if is_zio then
       return {
         {
           diagnostic = {
@@ -281,7 +267,6 @@ local queries = {
           title = 'ZIO: replace *> ZIO.succeed(' .. value_text .. ') with .as(' .. value_text .. ')',
         },
       }
-      -- end
     end,
   },
 
@@ -573,9 +558,6 @@ local queries = {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate, tx)
-
-      -- if is_zio then
       return {
         {
           diagnostic = {
@@ -593,7 +575,6 @@ local queries = {
           title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
         },
       }
-      -- end
     end,
   },
 
@@ -730,9 +711,6 @@ local queries = {
 
       local value_text = utils.get_node_text(bufnr, value)
 
-      -- local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate, tx)
-
-      -- if is_zio then
       return {
         {
           diagnostic = {
@@ -754,7 +732,6 @@ local queries = {
             .. ')',
         },
       }
-      -- end
     end,
   },
 
@@ -889,7 +866,6 @@ local queries = {
 
   -- ZIO.succeed(None) ~> ZIO.none
   -- ZIO.succeed(Option.empty[A]) ~> ZIO.none
-  -- TODO: support cats syntax none
   zio_none = {
     query = parse_query([[
 (call_expression
@@ -943,7 +919,6 @@ local queries = {
 
   -- ZIO.succeed(Some(x)) ~> ZIO.some(x)
   -- ZIO.succeed(Option(x)) ~> ZIO.some(x)
-  -- TODO: support cats syntax x.some
   zio_some = {
     query = parse_query([[
 (call_expression
@@ -1062,18 +1037,6 @@ local queries = {
       }
     end,
   },
-
-  -- x.map(_ => ExitCode.success) ~> x.exitCode
-  exit_code = {},
-  -- x.as(ExitCode.success) ~> x.exitCode
-  exit_code2 = {},
-  -- x.fold(_ => ExitCode.failure, _ => ExitCode.success)
-  exit_code3 = {},
-
-  -- ZIO.fail(new Exception("hello")).orDie ~> ZIO.die(new Exception("hello"))
-  -- TODO: how to verify the type of expression within fail call, can this be done with "textDocument/hover"
-  -- yes, probably with this https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#typeHierarchy_supertypes
-  zio_die = {},
 }
 
 local M = {}
@@ -1154,16 +1117,7 @@ function M.run_query(opts)
         local ok_cb, out = pcall(callback, item)
         if not ok_cb then
           vim.notify('Query ' .. opts.query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
-          return
         end
-
-        -- IMPORTANT:
-        -- We do NOT call cb() again here.
-        -- If your "callback" only transforms and you need to re-feed results somewhere,
-        -- we’ll adjust this (see note below).
-        --
-        -- In many plugins, callback(item) *publishes* diagnostics/actions directly,
-        -- so calling it here is sufficient.
       end)
 
       if not ok_thunk then

@@ -1,276 +1,357 @@
----@diagnostic disable: undefined-global
-local vim = vim
 local api = vim.api
 local lsp = vim.lsp
 local constants = require('scala-hints.constants')
-local diagnostics = require('scala-hints.diagnostics')
-local actions = require('scala-hints.actions')
+local diagnostics_mod = require('scala-hints.diagnostics')
+local actions_mod = require('scala-hints.actions')
 local logger = require('scala-hints.logger').new('client')
 
 local M = {}
 
-local client_id_by_buf = {}
-M.client_id_by_buf = client_id_by_buf
-
-local diag_ns = api.nvim_create_namespace(constants.diagnostic_namespace)
+-- Single client instance (one in-process server for all scala buffers)
+local client_id = nil
 
 local function is_valid_bufnr(bufnr)
   return type(bufnr) == 'number' and api.nvim_buf_is_valid(bufnr)
 end
 
-local function lsp_to_nvim_diagnostic(diagnostic)
-  local range = diagnostic.range or {}
-  local start_range = range.start or {}
-  local end_range = range['end'] or start_range
+-- Server capabilities advertised during the initialize handshake.
+-- Neovim uses these to decide which requests to route to our client.
+local server_capabilities = {
+  codeActionProvider = true,
+  textDocumentSync = {
+    openClose = true,
+    change = 1, -- Full sync
+    save = true,
+  },
+}
 
-  return {
-    lnum = start_range.line or 0,
-    col = start_range.character or 0,
-    end_lnum = end_range.line or start_range.line or 0,
-    end_col = end_range.character or start_range.character or 0,
-    message = diagnostic.message or '',
-    severity = diagnostic.severity or vim.diagnostic.severity.HINT,
-    source = diagnostic.source or constants.source,
-    code = diagnostic.code,
-  }
-end
-
-local function publish_diagnostics_handler(err, result, ctx)
-  if err then
-    logger.error('publishDiagnostics error: ' .. vim.inspect(err))
-    return
-  end
-
-  if not result or not ctx then
-    return
-  end
-
-  local bufnr = ctx.bufnr or (result.uri and vim.uri_to_bufnr(result.uri))
-  if not is_valid_bufnr(bufnr) then
-    return
-  end
-
-  local lsp_diagnostics = result.diagnostics or {}
-  local nvim_diagnostics = {}
-
-  for _, diagnostic in ipairs(lsp_diagnostics) do
-    table.insert(nvim_diagnostics, lsp_to_nvim_diagnostic(diagnostic))
-  end
-
-  vim.schedule(function()
-    if is_valid_bufnr(bufnr) then
-      vim.diagnostic.set(diag_ns, bufnr, nvim_diagnostics, ctx.config)
+--- Check whether Metals is attached and initialized for a given buffer
+local function metals_ready(bufnr)
+  local clients = lsp.get_clients({ bufnr = bufnr })
+  for _, c in ipairs(clients) do
+    if c.name == 'metals' and c.initialized then
+      return true
     end
-  end)
+  end
+  return false
 end
 
-local function code_action_handler(err, params, ctx)
-  if err then
-    return nil, err
-  end
-
-  local bufnr = ctx.bufnr
-  if not is_valid_bufnr(bufnr) then
-    return nil
-  end
-
-  local range = params.range
-  local start_line = range.start.line
-  local end_line = range['end'].line
-
-  local results = {}
-  local done = false
-
-  actions.resolve_actions(bufnr, start_line, end_line, function(action_results)
-    if action_results then
-      for _, action in ipairs(action_results) do
-        table.insert(results, {
-          title = action.title,
-          kind = 'quickfix',
-          edit = {
-            changes = {
-              [vim.uri_from_bufnr(bufnr)] = {
-                {
-                  range = action.range,
-                  newText = action.replacement,
-                },
-              },
-            },
-          },
-        })
-      end
-    end
-    done = true
-  end)
-
-  -- Wait for async completion with timeout
-  local attempts = 0
-  while not done and attempts < 100 do
-    vim.wait(10)
-    attempts = attempts + 1
-  end
-
-  return results
-end
-
-local function nvim_to_lsp_diagnostic(diagnostic)
-  if diagnostic.range then
-    return diagnostic
-  end
-
-  local lnum = diagnostic.lnum or 0
-  local col = diagnostic.col or 0
-  local end_lnum = diagnostic.end_lnum or lnum
-  local end_col = diagnostic.end_col or col
-
-  return {
-    range = {
-      start = { line = lnum, character = col },
-      ['end'] = { line = end_lnum, character = end_col },
-    },
-    message = diagnostic.message or '',
-    severity = diagnostic.severity or vim.diagnostic.severity.HINT,
-    source = diagnostic.source or constants.source,
-    code = diagnostic.code,
-  }
-end
-
-function M.publish_diagnostics(bufnr, diagnostics_list)
+--- Collect diagnostics and push them back to Neovim via the dispatcher
+---@param bufnr integer
+---@param dispatchers vim.lsp.rpc.Dispatchers
+local function refresh_diagnostics(bufnr, dispatchers)
   if not is_valid_bufnr(bufnr) then
     return
   end
 
-  local client_id = client_id_by_buf[bufnr]
-  if not client_id then
-    logger.info('No virtual client attached to buffer ' .. bufnr)
+  if not metals_ready(bufnr) then
+    logger.info('Metals not ready for buffer ' .. bufnr .. ', skipping diagnostics')
     return
   end
 
-  local lsp_diagnostics = {}
-  for _, diagnostic in ipairs(diagnostics_list or {}) do
-    table.insert(lsp_diagnostics, nvim_to_lsp_diagnostic(diagnostic))
-  end
+  logger.info('Collecting diagnostics for buffer ' .. bufnr)
 
-  publish_diagnostics_handler(nil, {
-    uri = vim.uri_from_bufnr(bufnr),
-    diagnostics = lsp_diagnostics,
-  }, {
-    client_id = client_id,
-    bufnr = bufnr,
-  })
-end
-
-function M.collect_and_publish(bufnr)
-  if not is_valid_bufnr(bufnr) then
-    return
-  end
-
-  diagnostics.collect_diagnostics(bufnr, function(results)
-    if not results then
+  diagnostics_mod.collect_diagnostics(bufnr, function(results)
+    if not results or not is_valid_bufnr(bufnr) then
       return
     end
 
-    if is_valid_bufnr(bufnr) then
-      M.publish_diagnostics(bufnr, results)
+    -- Convert diagnostics to LSP format
+    local lsp_diagnostics = {}
+    for _, diag in ipairs(results) do
+      table.insert(lsp_diagnostics, {
+        range = {
+          start = { line = diag.lnum or 0, character = diag.col or 0 },
+          ['end'] = { line = diag.end_lnum or diag.lnum or 0, character = diag.end_col or diag.col or 0 },
+        },
+        message = diag.message or '',
+        severity = diag.severity or vim.diagnostic.severity.HINT,
+        source = diag.source or constants.source,
+      })
     end
+
+    -- Push diagnostics through the dispatcher notification channel.
+    -- Neovim will handle them via its built-in publishDiagnostics handler.
+    vim.schedule(function()
+      if is_valid_bufnr(bufnr) then
+        dispatchers.notification('textDocument/publishDiagnostics', {
+          uri = vim.uri_from_bufnr(bufnr),
+          diagnostics = lsp_diagnostics,
+        })
+      end
+    end)
   end)
 end
 
-local function clear_buf(bufnr, client_id)
-  if client_id_by_buf[bufnr] == client_id or client_id == nil then
-    client_id_by_buf[bufnr] = nil
+--- Create the in-process RPC "server".
+--- This is passed as the `cmd` field to vim.lsp.start().
+--- Neovim calls it with `dispatchers` and expects a PublicClient back.
+---@param dispatchers vim.lsp.rpc.Dispatchers
+---@return vim.lsp.rpc.PublicClient
+function M.rpc_start(dispatchers)
+  local message_id = 0
+  local stopped = false
+
+  --- Handle an incoming request or notification from Neovim
+  ---@param method string LSP method name
+  ---@param params table? LSP params
+  ---@param callback fun(err: any, result: any)? response callback (nil for notifications)
+  ---@param is_notify boolean? true when this is a notification (no response expected)
+  local function handle(method, params, callback, is_notify)
+    params = params or {}
+    message_id = message_id + 1
+
+    local function send(result)
+      if callback then
+        callback(nil, result)
+      end
+    end
+
+    -- === Lifecycle methods ===
+
+    if method == 'initialize' then
+      logger.info('Handling initialize request')
+      send({
+        capabilities = server_capabilities,
+        serverInfo = {
+          name = constants.client_name,
+          version = '0.1.0',
+        },
+      })
+      return true, message_id
+    end
+
+    if method == 'initialized' then
+      logger.info('Client initialized')
+      return true, message_id
+    end
+
+    if method == 'shutdown' then
+      logger.info('Handling shutdown request')
+      stopped = true
+      send()
+      return true, message_id
+    end
+
+    if method == 'exit' then
+      logger.info('Handling exit notification')
+      if dispatchers.on_exit then
+        dispatchers.on_exit(0, 0)
+      end
+      return true, message_id
+    end
+
+    -- === Document sync notifications ===
+
+    if method == 'textDocument/didOpen' or method == 'textDocument/didSave' then
+      local uri = params.textDocument and params.textDocument.uri
+      if uri then
+        local bufnr = vim.uri_to_bufnr(uri)
+        logger.info('Received ' .. method .. ' for buffer ' .. bufnr)
+        refresh_diagnostics(bufnr, dispatchers)
+      end
+      return true, message_id
+    end
+
+    if method == 'textDocument/didChange' then
+      -- We don't refresh on every keystroke; diagnostics run on didOpen/didSave.
+      return true, message_id
+    end
+
+    if method == 'textDocument/didClose' then
+      local uri = params.textDocument and params.textDocument.uri
+      if uri then
+        local bufnr = vim.uri_to_bufnr(uri)
+        logger.info('Received didClose for buffer ' .. bufnr)
+        -- Clear our diagnostics when the document is closed
+        vim.schedule(function()
+          if is_valid_bufnr(bufnr) then
+            dispatchers.notification('textDocument/publishDiagnostics', {
+              uri = uri,
+              diagnostics = {},
+            })
+          end
+        end)
+      end
+      return true, message_id
+    end
+
+    -- === Code actions ===
+
+    if method == 'textDocument/codeAction' then
+      logger.info('Handling textDocument/codeAction request')
+
+      local context_params = params or {}
+      local range = context_params.range
+      if not range then
+        send({})
+        return true, message_id
+      end
+
+      local uri = context_params.textDocument and context_params.textDocument.uri
+      if not uri then
+        send({})
+        return true, message_id
+      end
+
+      local bufnr = vim.uri_to_bufnr(uri)
+      if not is_valid_bufnr(bufnr) then
+        send({})
+        return true, message_id
+      end
+
+      local start_line = range.start.line
+      local end_line = range['end'].line
+
+      actions_mod.resolve_actions(bufnr, start_line, end_line, function(action_results)
+        local lsp_actions = {}
+        if action_results then
+          for _, action in ipairs(action_results) do
+            table.insert(lsp_actions, {
+              title = action.title,
+              kind = 'quickfix',
+              edit = {
+                changes = {
+                  [uri] = {
+                    {
+                      range = action.range,
+                      newText = action.replacement,
+                    },
+                  },
+                },
+              },
+            })
+          end
+        end
+
+        logger.info('Returning ' .. #lsp_actions .. ' code actions')
+        send(lsp_actions)
+      end)
+
+      return true, message_id
+    end
+
+    -- === Unhandled methods ===
+
+    logger.info('Unhandled method: ' .. method)
+    if not is_notify then
+      send(nil)
+    end
+
+    return true, message_id
   end
+
+  -- === PublicClient interface ===
+
+  ---@param method string LSP method name
+  ---@param params table? LSP request params
+  ---@param callback fun(err: any, result: any) response callback
+  ---@param notify_callback fun(message_id: integer)? called when the request is registered
+  local function request(method, params, callback, notify_callback)
+    logger.info('RPC request: ' .. method)
+
+    local success, req_id = handle(method, params, vim.schedule_wrap(callback))
+
+    if success and notify_callback then
+      local id_to_clear = message_id
+      vim.schedule(function()
+        notify_callback(id_to_clear)
+      end)
+    end
+
+    return success, message_id
+  end
+
+  ---@param method string LSP method name
+  ---@param params table? LSP notification params
+  local function notify(method, params)
+    logger.info('RPC notification: ' .. method)
+    handle(method, params, nil, true)
+    return true
+  end
+
+  return {
+    request = request,
+    notify = notify,
+    is_closing = function()
+      return stopped
+    end,
+    terminate = function()
+      stopped = true
+    end,
+  }
 end
 
-function M.start_virtual_client(bufnr)
+--- Start (or reuse) the in-process LSP client and attach it to the given buffer.
+---@param bufnr integer buffer handle
+---@return integer? client_id
+function M.start(bufnr)
   if not is_valid_bufnr(bufnr) then
-    logger.info('Invalid buffer provided to start_virtual_client: ' .. tostring(bufnr))
-    return
+    logger.info('Invalid buffer: ' .. tostring(bufnr))
+    return nil
   end
 
-  local existing_client_id = client_id_by_buf[bufnr]
-  if existing_client_id then
-    local existing_client = lsp.get_client_by_id(existing_client_id)
-    if existing_client then
-      if lsp.buf_is_attached and not lsp.buf_is_attached(bufnr, existing_client_id) then
-        lsp.buf_attach_client(bufnr, existing_client_id)
-        logger.info('Re-attached virtual client ' .. existing_client_id .. ' to buffer ' .. bufnr)
-      else
-        logger.info('Virtual client already attached to buffer ' .. bufnr)
+  -- Reuse existing client if it's still alive
+  if client_id then
+    local existing = lsp.get_client_by_id(client_id)
+    if existing and not existing:is_stopped() then
+      -- Just attach to the new buffer if not already attached
+      if not lsp.buf_is_attached(bufnr, client_id) then
+        lsp.buf_attach_client(bufnr, client_id)
+        logger.info('Attached existing client ' .. client_id .. ' to buffer ' .. bufnr)
       end
-      return existing_client_id
+      return client_id
     else
-      logger.info('Stale virtual client id for buffer ' .. bufnr .. ', restarting')
-      client_id_by_buf[bufnr] = nil
+      logger.info('Previous client stopped, starting new one')
+      client_id = nil
     end
   end
 
-  logger.info('Starting virtual LSP client for buffer ' .. bufnr)
+  logger.info('Starting in-process LSP client')
 
-  local client_id = lsp.start_client({
+  client_id = lsp.start({
     name = constants.client_name,
-    capabilities = constants.capabilities,
-    handlers = {
-      ['textDocument/publishDiagnostics'] = publish_diagnostics_handler,
-      ['textDocument/codeAction'] = code_action_handler,
-    },
+    cmd = M.rpc_start,
+    filetypes = { constants.lang },
+    root_dir = vim.fn.getcwd(),
     on_attach = function(_, buf)
-      logger.info('Virtual client attached to buffer ' .. buf)
+      logger.info('Client attached to buffer ' .. buf)
     end,
-    on_exit = function(code, signal, stopped_client_id)
-      logger.info(('Virtual client exited (code=%s, signal=%s)'):format(code, signal))
-      for buf, id in pairs(client_id_by_buf) do
-        if id == stopped_client_id then
-          client_id_by_buf[buf] = nil
-        end
-      end
+    on_exit = function(code, signal)
+      logger.info(('Client exited (code=%s, signal=%s)'):format(code, signal))
+      client_id = nil
     end,
+  }, {
+    bufnr = bufnr,
   })
 
   if client_id then
-    lsp.buf_attach_client(bufnr, client_id)
-    client_id_by_buf[bufnr] = client_id
-    logger.info('Virtual client ' .. client_id .. ' attached to buffer ' .. bufnr)
+    logger.info('Client started with id ' .. client_id)
   else
-    logger.error('Failed to start virtual client')
+    logger.error('Failed to start in-process LSP client')
   end
 
   return client_id
 end
 
-function M.stop_virtual_client(bufnr)
-  if not bufnr then
-    return
-  end
-
-  local client_id = client_id_by_buf[bufnr]
+--- Stop the in-process LSP client
+function M.stop()
   if not client_id then
     return
   end
 
-  logger.info('Stopping virtual client ' .. client_id .. ' for buffer ' .. bufnr)
-  lsp.stop_client(client_id)
-  clear_buf(bufnr, client_id)
-end
-
-function M.handle_lsp_attach(args)
-  if not args or not args.buf then
-    return
+  local c = lsp.get_client_by_id(client_id)
+  if c then
+    logger.info('Stopping client ' .. client_id)
+    c:stop()
   end
-
-  return M.start_virtual_client(args.buf)
+  client_id = nil
 end
 
-function M.handle_buf_cleanup(args)
-  if not args or not args.buf then
-    return
-  end
-
-  M.stop_virtual_client(args.buf)
-end
-
-function M.get_client_id(bufnr)
-  return client_id_by_buf[bufnr]
+--- Get the current client id
+---@return integer?
+function M.get_client_id()
+  return client_id
 end
 
 return M

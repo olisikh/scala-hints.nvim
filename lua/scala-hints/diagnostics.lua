@@ -1,5 +1,3 @@
-local vim = vim
-local parsers = require('nvim-treesitter.parsers')
 local async = require('plenary.async')
 local utils = require('scala-hints.utils')
 local query = require('scala-hints.query')
@@ -25,36 +23,15 @@ end
 
 function M.collect_diagnostics(bufnr, done)
   async.run(function()
-    local root = parsers.get_tree_root(bufnr)
+    local parser = vim.treesitter.get_parser(bufnr, 'scala')
+    local tree = parser:parse()[1]
+    local root = tree:root()
 
     local start_line = 0
     local end_line = vim.api.nvim_buf_line_count(bufnr)
 
-    local query_names = {
-      'succeed_unit',
-      'fail_exception_or_die',
-      'map_unit',
-      'as_unit',
-      'zip_right_unit',
-      'zip_right_value',
-      'zip_left_value',
-      'flat_map_value',
-      'map_value',
-      'catch_all_unit',
-      'fold_cause_ignore',
-      'or_else_fail',
-      'or_else_fail2',
-      'or_else_fail3',
-      'zio_type',
-      'zlayer_type',
-      'zio_none',
-      'zio_some',
-      'zio_either',
-      'zio_foreach',
-    }
-
     local queries = {}
-    for _, query_name in ipairs(query_names) do
+    for _, query_name in ipairs(constants.query_names) do
       table.insert(
         queries,
         async.wrap(

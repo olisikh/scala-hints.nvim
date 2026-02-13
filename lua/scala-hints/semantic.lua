@@ -61,21 +61,21 @@ local function pump(bufnr)
       pump(bufnr)
     end
 
-    -- timeout guard
-    local timed_out = false
+    -- Guard: first responder (timeout or LSP) wins; the other is ignored
+    local resolved = false
     vim.defer_fn(function()
-      if timed_out then
+      if resolved then
         return
       end
-      timed_out = true
+      resolved = true
       done(false)
     end, TIMEOUT_MS)
 
     vim.lsp.buf_request(bufnr, job.method, job.params, function(err, result)
-      if timed_out then
+      if resolved then
         return
       end
-      timed_out = true
+      resolved = true
 
       if err ~= nil then
         done(false)
@@ -87,7 +87,11 @@ local function pump(bufnr)
   end
 end
 
--- Main API: request hover-derived boolean, async callback
+--- Request a hover-derived boolean predicate check, with callback
+---@param bufnr integer buffer number
+---@param node TSNode|nil node to hover on
+---@param predicate fun(value: string): boolean predicate to match against hover contents
+---@param cb fun(result: boolean) callback with the predicate result
 function M.hover_predicate(bufnr, node, predicate, cb)
   if not node then
     cb(false)
@@ -138,7 +142,8 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   pump(bufnr)
 end
 
--- Optional: clear state on buffer wipeout
+--- Clear cached state for a buffer
+---@param bufnr integer buffer number
 function M.reset(bufnr)
   state[bufnr] = nil
 end

@@ -1,54 +1,35 @@
-local parsers = require('nvim-treesitter.parsers')
 local async = require('plenary.async')
 local query = require('scala-hints.query')
 local utils = require('scala-hints.utils')
-local source = require('scala-hints.constants').source
+local constants = require('scala-hints.constants')
+
+local source = constants.source
 
 local M = {}
 
-local function make_code_action()
-  return function(result)
-    local action = result.action
-    return {
-      title = result.title,
-      range = {
-        start = { line = action.start_row, character = action.start_col },
-        ['end'] = { line = action.end_row, character = action.end_col },
-      },
-      replacement = result.replacement,
-    }
-  end
+---Transform a query result into an LSP code action shape
+---@param result table query handler result with title, action, and replacement
+---@return table code_action
+local function make_code_action(result)
+  local action = result.action
+  return {
+    title = result.title,
+    range = {
+      start = { line = action.start_row, character = action.start_col },
+      ['end'] = { line = action.end_row, character = action.end_col },
+    },
+    replacement = result.replacement,
+  }
 end
 
 function M.resolve_actions(bufnr, start_line, end_line, done)
   async.run(function()
-    local root = parsers.get_tree_root(bufnr)
-
-    local query_names = {
-      'succeed_unit',
-      'fail_exception_or_die',
-      'map_unit',
-      'as_unit',
-      'zip_right_unit',
-      'zip_right_value',
-      'zip_left_value',
-      'flat_map_value',
-      'map_value',
-      'catch_all_unit',
-      'fold_cause_ignore',
-      'or_else_fail',
-      'or_else_fail2',
-      'or_else_fail3',
-      'zio_type',
-      'zlayer_type',
-      'zio_none',
-      'zio_some',
-      'zio_either',
-      'zio_foreach',
-    }
+    local parser = vim.treesitter.get_parser(bufnr, 'scala')
+    local tree = parser:parse()[1]
+    local root = tree:root()
 
     local queries = {}
-    for _, query_name in ipairs(query_names) do
+    for _, query_name in ipairs(constants.query_names) do
       table.insert(
         queries,
         async.wrap(
@@ -58,7 +39,7 @@ function M.resolve_actions(bufnr, start_line, end_line, done)
             query_name = query_name,
             start_line = start_line,
             end_line = end_line,
-            callback = make_code_action(),
+            callback = make_code_action,
           }),
           1
         )
