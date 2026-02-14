@@ -22,39 +22,40 @@ Neovim 0.11+
   opts = {},
   dependencies = {
     'nvim-lua/plenary.nvim',
-    'nvim-treesitter/nvim-treesitter',
     'scalameta/nvim-metals',
   },
 }
 ```
 
-Call `require('scala-hints').setup()` after Metals is configured and attaching to Scala buffers.
+Call `require('scala-hints').setup()` to init the plugin.
+The plugin listens on `LspAttach`, only runs on Scala buffers, and uses Metals hover (`textDocument/hover`) for type checks.
 
 ### Configuration
 
 ```lua
 require('scala-hints').setup({
+  logging = {
+    enabled = true, -- Enable file logging
+    level = 'INFO', -- Log level: debug|info|warn|error, case-insensitive
+  },
   hover = {
-    timeouts_ms = { 400, 1000, 2000 },
-    log_misses = true,
+    timeouts_ms = { 400, 1000, 2000 }, -- Retry schedule for Metals textDocument/hover (ms)
+    max_inflight = 4, -- Max concurrent hover requests per buffer
+    log_misses = true, -- Log final hover misses to /tmp/scala-hints/log
   },
   diagnostics = {
-    default_severity = 'HINT',
+    default_severity = 'HINT', -- Default diagnostic severity
     overrides = {
-      ['zio/zip_left_value'] = 'OFF',
+      ['zio/zip_left_value'] = 'OFF', -- Disable a specific diagnostic
       ['zio/zip_right_operator'] = 'OFF',
-      ['zio/zio_die'] = 'WARN',
+      ['zio/zio_die'] = 'WARN', -- Elevate severity for a specific diagnostic
     },
+    excluded_libs = {}, -- Exclude libraries from diagnostics (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
+  actions = {
+    excluded_libs = {}, -- Exclude libraries from code actions (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
   },
 })
 ```
-
-| Option | Description |
-| --- | --- |
-| `hover.timeouts_ms` | Retry timeouts (ms) for Metals hover requests |
-| `hover.log_misses` | Log final hover misses to `/tmp/scala-hints/log` |
-| `diagnostics.default_severity` | Default severity: `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF` |
-| `diagnostics.overrides` | Per-query overrides keyed by `zio/<query>`. `OFF` suppresses diagnostics but still emits code actions |
 
 ## Usage
 
@@ -111,7 +112,7 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
 ## Troubleshooting
 
-- **No diagnostics?** Metals must signal readiness (`MetalsReady` / `MetalsInitialized`) before hints appear.
+- **No diagnostics?** Metals must signal readiness (`MetalsReady` / `MetalsInitialized`) before diagnostics appear.
 - **Diagnostics disappear after undo?** Reopen the buffer or trigger a save to force a refresh.
 - **False positives?** Some handlers skip Metals hover verification. Check [AGENTS.md](AGENTS.md) for details on which patterns are LSP-dependent.
 
