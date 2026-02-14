@@ -1,176 +1,134 @@
 # AGENTS.md - Project Documentation
 
 ## 1. Project Overview
-`scala-hints.nvim` is a Neovim plugin designed to provide opinionated diagnostics and quickfix code actions for ZIO-based Scala code. It leverages Treesitter for pattern matching and Metals LSP for type information, aiming to improve code quality by identifying common ZIO code smells and suggesting idiomatic replacements.
 
-The project is currently in a "sandbox" state, serving as a learning project for Neovim plugin development and ZIO code optimization.
+`scala-hints.nvim` is a Neovim plugin that provides opinionated diagnostics and quickfix code actions for ZIO-based Scala code. It uses Treesitter for AST pattern matching, Metals LSP for type verification, and native Neovim diagnostics/code-action APIs.
 
-## 2. Technical Architecture
-The plugin follows a modular architecture, integrating with `none-ls` (formerly `null-ls`) to provide diagnostics and code actions.
+## 2. Architecture
 
-### ASCII Architecture Diagram
 ```text
-+-------------------------------------------------------+
-|                    Neovim (Lua)                       |
-+-------------------------------------------------------+
-           |                                 ^
-           v                                 |
-+-----------------------+         +---------------------+
-|       none-ls         | <-----> |  scala-hints.nvim   |
-+-----------------------+         +---------------------+
-           |                         |         |
-           |                         v         v
-           |               +------------+   +------------+
-           |               | Treesitter |   | Metals LSP |
-           |               +------------+   +------------+
-           |                         |         |
-           +-------------------------+---------+
+  BufWritePost / BufEnter            vim.lsp.buf.code_action()
+         |                                  |
+         v                                  v
+  diagnostics.lua                     actions.lua
+         \                                /
+          +------ query.run_query -------+
+                        |
+                handler(bufnr, matches)
+                        |
+           +------------+------------+
+           |                         |
+  vim.diagnostic.set()     LSP code-action response
 ```
 
-### Dependency Graph
-- `nvim-lua/plenary.nvim`: Async utilities and general helpers.
-- `nvim-treesitter/nvim-treesitter`: AST parsing and query execution.
-- `scalameta/nvim-metals`: Type information via LSP.
-- `nvimtools/none-ls.nvim`: Integration for diagnostics and code actions.
+**Dependencies**: `plenary.nvim` (async), `nvim-treesitter` (AST parsing), `nvim-metals` (type info via LSP).
 
-## 3. File Structure & Purpose
-The codebase is organized into six primary Lua modules:
+### Modules
 
 | Module | Purpose |
 | :--- | :--- |
-| `init.lua` | Entry point; registers diagnostics and code action sources with `none-ls`. |
-| `diagnostics.lua` | Orchestrates diagnostic collection by running Treesitter queries. |
-| `actions.lua` | Resolves available code actions for a given range. |
-| `query.lua` | Contains all Treesitter query definitions and their respective handlers. |
-| `utils.lua` | Shared utilities for LSP interaction, async handling, and node manipulation. |
-| `constants.lua` | Project-wide constants (e.g., source name, language). |
+| `init.lua` | Entry point; registers namespace, Metals-gated autocommands, code-action wrapper |
+| `diagnostics.lua` | Orchestrates diagnostic collection by running Treesitter queries |
+| `diagnostics_config.lua` | Per-query severity configuration (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`) |
+| `actions.lua` | Resolves code actions for a given range |
+| `query.lua` | Generic Treesitter query execution engine |
+| `libs/zio/queries.lua` | All 35 ZIO query definitions and handlers |
+| `libs/zio/init.lua` | ZIO query registry |
+| `semantic.lua` | LSP hover verification, caching, and `hover_predicate` |
+| `client.lua` | LSP client management |
+| `utils.lua` | Async helpers, node inspection, Metals readiness polling |
+| `logger.lua` | File-based logging |
+| `constants.lua` | Shared metadata (namespace name, filetype) |
 
-## 4. Query Handler Flow
-The core logic resides in the interaction between `diagnostics`/`actions` and `query.lua`.
+### Query Handler Flow
 
-1. **Trigger**: `none-ls` calls the registered generator.
-2. **Preparation**: `init.lua` ensures Metals is ready (via `utils.ensure_metals`).
-3. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over a list of query names.
-4. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
-5. **Handling**: For each match, the specific `handler` in `query.lua` is invoked.
-6. **Verification**: Handlers may use `utils.hover_node_and_match` to verify types via Metals LSP.
-7. **Result**: Diagnostics or code actions are returned to `none-ls`.
+1. **Trigger**: `MetalsReady` / `MetalsInitialized` autocommands register the diagnostic autocommand and code-action wrapper.
+2. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over queries.
+3. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
+4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua`.
+5. **Verification**: LSP-dependent handlers call `semantic.hover_predicate` to confirm ZIO types via Metals hover.
+6. **Result**: Diagnostics feed `vim.diagnostic.set()`; code actions flow through the wrapped LSP handler.
 
-### ASCII Query Handler Diagram
-```text
-[none-ls] -> [init.lua] -> [diagnostics.lua]
-                                 |
-                                 v
-                          [query.run_query]
-                                 |
-                +----------------+----------------+
-                |                                 |
-        [Treesitter Match]                [Handler Invocation]
-                |                                 |
-                v                                 v
-        (AST Nodes)                      [utils.hover_node] -> [Metals LSP]
-                                                 |
-                                                 v
-                                         (Diagnostic/Action)
-```
+## 3. Pattern Catalog
 
-## 5. Pattern Catalog
-The following table lists the patterns currently defined in `query.lua`.
+35 patterns implemented in [libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
 
-| Pattern Name | Detection Summary | Suggested Replacement | Status |
-| :--- | :--- | :--- | :--- |
-| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` | Implemented |
-| `fail_exception_or_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` | Implemented |
-| `map_unit` | `.map(_ => ())` | `.unit` | Implemented |
-| `as_unit` | `.as(())` | `.unit` | Implemented |
-| `zip_right_unit` | `*> ZIO.unit` | `.unit` | Implemented |
-| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` | Implemented |
-| `zip_left_value` | `.tap(_ => v)` | `<* v` or `.zipLeft(v)` | Implemented |
-| `flat_map_value` | `.flatMap(_ => v)` | `*> v` or `.zipRight(v)` | Implemented |
-| `map_value` | `.map(_ => v)` | `.as(v)` | Implemented |
-| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` | Implemented |
-| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` | Implemented |
-| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` | Implemented |
-| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` | Implemented |
-| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` | Implemented |
-| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` | Implemented |
-| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` (and others) | Implemented |
-| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` (and others) | Implemented |
-| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` | Implemented |
-| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` | Implemented |
-| `zio_either` | `ZIO.succeed(Left(v))` | `ZIO.left(v)` | Implemented |
-| `exit_code` | `.map(_ => ExitCode.success)` | `.exitCode` | **Placeholder** |
-| `exit_code2` | `.as(ExitCode.success)` | `.exitCode` | **Placeholder** |
-| `exit_code3` | `.fold(...)` | `.exitCode` | **Placeholder** |
-| `zio_die` | `ZIO.fail(new Exception).orDie` | `ZIO.die(...)` | **Placeholder** |
+| Pattern | Detection | Replacement |
+| :--- | :--- | :--- |
+| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` |
+| `zio_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` |
+| `map_unit` | `.map(_ => ...)` | `.unit` |
+| `as_unit` | `.as(())` | `.unit` |
+| `zip_right_unit` | `*> ZIO.unit` | `.unit` |
+| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` |
+| `zip_right_operator` | `.zipRight(v)` | `*> v` |
+| `zip_left_value` | `.tap(_ => v)` (unused param) | `.zipLeft(v)` |
+| `flat_map_value` | `.flatMap(_ => v)` | `.zipRight(v)` |
+| `map_value` | `.map(_ => v)` | `.as(v)` |
+| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` |
+| `zio_cond` | `ZIO.cond(cond, (), err)` | `ZIO.fail(err).unless(cond)` |
+| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` |
+| `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` |
+| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` |
+| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` |
+| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` |
+| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` |
+| `zio_type` | `ZIO[Any, Nothing, A]` etc. | `UIO[A]`, `Task[A]`, etc. |
+| `zlayer_type` | `ZLayer[Any, Nothing, A]` etc. | `ULayer[A]`, `TaskLayer[A]`, etc. |
+| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` |
+| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` |
+| `zio_either` | `ZIO.succeed(Left/Right(v))` | `ZIO.left/right(v)` |
+| `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` |
+| `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` |
+| `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` |
+| `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` |
+| `tap` | `.map(v => { sideEffect(v); v })` | `.tap(sideEffect)` |
+| `tap_error` | `.mapError(e => { sideEffect(e); e })` | `.tapError(sideEffect)` |
+| `tap_both` | chained `map`/`mapError` side-effects | `.tapBoth(...)` |
+| `when` | `if (cond) eff else ZIO.unit` | `eff.when(cond)` |
+| `unless` | `if (!cond) eff else ZIO.unit` | `eff.unless(cond)` |
+| `exit_code_map` | `.map(_ => ExitCode.success)` | `.exitCode` |
+| `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` |
+| `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` |
 
-## 6. Technical Details
-- **Treesitter Query Syntax**: Uses S-expressions for AST matching. Handlers often use `#eq?` and `#any-of?` predicates.
-- **Async Handling**: Utilizes `plenary.async` for non-blocking LSP requests and query execution.
-- **Metals Readiness**: `utils.ensure_metals` polls for the Metals client and its `initialized` state.
-- **Timeouts**:
-    - Diagnostics collection: 30 seconds.
-    - Metals readiness check: 10 seconds.
-    - Code action resolution: 10 seconds.
-- **Type Checking**: `utils.hover_node_and_match` performs a `textDocument/hover` request to Metals and matches the returned type string against a predicate (e.g., checking for "ZIO").
+### Remaining IntelliJ Parity Gaps
 
-## 7. Current Issues & Limitations
-- **Metals Initialization**: Reliably waiting for Metals to be fully ready (including indexing) is still a challenge.
-- **Diagnostics Refresh**: Diagnostics sometimes fail to rebuild after an "undo" operation or certain code actions.
-- **Whitespace Sensitivity**: Some Treesitter queries are sensitive to specific formatting (e.g., newlines between `ZIO` and `.unit`).
-- **No Alias Support**: Patterns only match literal names (e.g., `ZIO`); they do not recognize type aliases or renamed imports.
-- **No Caching**: Every diagnostic request re-runs all queries, which may impact performance on very large files.
-- **Inconsistent Type Checking**: Not all patterns currently verify the underlying type via Metals, leading to potential false positives on non-ZIO code.
-- **Test Coverage**: There are currently **zero** automated tests.
+| Pattern | Description | Complexity |
+| :--- | :--- | :--- |
+| Type Modes | `CanFail`, `NeedsEnv`, contravariance | High |
+| Advanced | Wrapping `Option/Future/Try`, yield in for-comprehension | High |
 
-## 8. TODOs from User
-The following items are tracked for future implementation (from `TODO.md`):
-- **Reliable Metals Wait**: Improve the logic for waiting until Metals indexing is complete.
-- **Undo Trigger**: Fix diagnostic refresh after undo.
-- **New Hints**:
-    - `.bimap`
-    - `.when` / `.unless`
-    - `.exitCode` (implementing placeholders)
-    - `.delay`
-    - `.foreach` / `.foreachPar`
-    - `.tap` / `.tapError` / `.tapBoth`
-- **Missing Combinators**: Add a hint for forgotten `*>` (zipRight) usage.
-- **Inspiration**: Reference the [IntelliJ ZIO plugin](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features) for additional feature ideas.
+## 4. Technical Details
 
-## 9. Future Enhancement Ideas
-| Category | Immediate | Medium-Term | Long-Term | Documentation/UX |
-| :--- | :--- | :--- | :--- | :--- |
-| **Feature** | Implement `exitCode` | Add `.bimap` support | Support for `ZPure` | Pattern Catalog UI |
-| **Stability** | Fix Undo refresh | Improve Metals polling | Add caching layer | Troubleshooting guide |
-| **Quality** | Add basic unit tests | Expand type checking | Support type aliases | Contributor guide |
-| **Performance** | Optimize TS queries | Async query batching | Incremental parsing | Metrics dashboard |
+- **Treesitter queries** use S-expressions with `#eq?` and `#any-of?` predicates.
+- **Async**: All queries run via `plenary.async`; `semantic.hover_predicate` retries hover with configurable backoff (default 400/1000/2000 ms).
+- **Metals readiness**: Waits for `MetalsReady` / `MetalsInitialized` autocommands before registering diagnostics.
+- **Timeouts**: Diagnostics 30s, code actions 10s, Metals readiness 10s.
+- **Hover caching**: Results cached per buffer tick to avoid redundant LSP calls.
+- **Type checking**: Hover results matched against `is_zio_type` predicate (checks for `ZIO[`, `UIO[`, `IO[`, `Task[`, etc.).
 
-## 10. Pattern Addition Guide
-To add a new pattern to the plugin:
+## 5. Known Limitations
 
-1. **Identify the Pattern**: Use `:InspectTree` in Neovim to see the AST for the code you want to match.
-2. **Define the Query**: Add a new entry to the `queries` table in `lua/scala-hints/query.lua`.
-    - Write the Treesitter S-expression.
-    - Implement the `handler` function to extract ranges and suggest replacements.
-3. **Register the Query**: Add the query name to the `query_names` list in both `lua/scala-hints/diagnostics.lua` and `lua/scala-hints/actions.lua`.
-4. **Implement Type Verification (Optional)**: Use `utils.hover_node_and_match` if the pattern should only apply to specific types (e.g., `ZIO`).
-5. **Manual Verification**: Open a Scala file and verify that the diagnostic appears and the code action works as expected.
-6. **Update Documentation**: Add the new pattern to the Pattern Catalog in `AGENTS.md`.
+- Patterns match literal names only (`ZIO`); type aliases and renamed imports are not recognized.
+- Some queries are whitespace-sensitive (e.g., `ZIO\n.unit` may not match).
+- Not all handlers verify types via Metals, which can cause false positives on non-ZIO code.
+- Diagnostics may not refresh after undo operations.
+- Performance may degrade on very large files due to lack of incremental parsing.
 
-## 11. Metrics & Statistics
-- **Total Lines of Code**: 1557
-- **Core Logic (`query.lua`)**: 1135 lines
-- **Number of Modules**: 6
-- **Total Patterns**: 24 (20 implemented, 4 placeholders)
-- **Test Coverage**: 0%
+## 6. Adding a New Pattern
 
-## 12. Known Limitations
-- Relies heavily on `none-ls`, which is in maintenance mode.
-- Performance may degrade on files with thousands of lines due to lack of caching.
-- Limited to Scala language and ZIO framework.
+1. Use `:InspectTree` in Neovim to see the AST for the code you want to match.
+2. Add a new entry to the queries table in `lua/scala-hints/libs/zio/queries.lua`:
+   - Write the Treesitter S-expression query.
+   - Implement the `handler` function to extract ranges and suggest replacements.
+   - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
+3. Register the query name in `lua/scala-hints/libs/zio/init.lua`.
+4. Optionally use `semantic.hover_predicate` for type verification.
+5. Add tests in `tests/zio/pure_queries_spec.lua` (or `lsp_queries_spec.lua` for LSP-dependent patterns).
+6. Update the pattern catalog above.
 
-## 13. Appendix A: Treesitter Query Examples
-Example of a simple match for `ZIO.succeed(())`:
+### Treesitter Query Example
+
 ```query
 (call_expression
   function: (field_expression
@@ -181,20 +139,8 @@ Example of a simple match for `ZIO.succeed(())`:
 )
 ```
 
-## 14. Appendix B: LSP Interaction Details
-The plugin uses `vim.lsp.buf_request` with the `textDocument/hover` method. The response is parsed to find type information, which is then matched against predicates defined in `query.lua`.
+## 7. References
 
-## 15. Appendix C: External References
 - [ZIO Documentation](https://zio.dev/)
 - [IntelliJ ZIO Plugin](https://github.com/zio/zio-intellij)
 - [Treesitter Query Language](https://tree-sitter.github.io/tree-sitter/using-parsers#query-syntax)
-
-## 16. Acknowledgments
-- Inspired by the work of Igal Tabachnik on the IntelliJ ZIO plugin.
-- Built using the Neovim Lua ecosystem.
-
-## 17. Maintenance Checklist
-- [ ] Verify Metals compatibility after Metals updates.
-- [ ] Check for Treesitter grammar changes in `tree-sitter-scala`.
-- [ ] Monitor `none-ls` for breaking changes.
-- [ ] Update Pattern Catalog when new handlers are added.

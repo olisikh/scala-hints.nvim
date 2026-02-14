@@ -1,5 +1,6 @@
 local ts = vim.treesitter
 local async = require('plenary.async')
+local logger = require('scala-hints.logger').new('utils')
 
 local M = {}
 
@@ -20,30 +21,6 @@ M.run_or_timeout = function(func, timeout)
     end,
     timeout_func,
   })
-end
-
--- TODO: implement metals progress messages parsing, expecting for when the indexing is over to then kick off
--- diagnostics collection
---
----Makes sure metals is ready
----@param bufnr integer buffer number
----@return vim.lsp.Client metals client
-M.ensure_metals = function(bufnr)
-  local clients = vim.lsp.get_clients({ bufnr = bufnr, name = 'metals' })
-
-  if #clients == 0 then
-    async.util.sleep(1000)
-    return M.ensure_metals(bufnr)
-  else
-    local metals = clients[1]
-
-    if not metals or not metals.initialized then
-      async.util.sleep(1000)
-      return M.ensure_metals(bufnr)
-    else
-      return metals
-    end
-  end
 end
 
 M.deep_merge = function(tbl, ext)
@@ -96,7 +73,7 @@ M.hover_node_and_match = function(bufnr, node, predicate)
   local p_start_row, p_start_col, p_end_row, p_end_col = node:range()
   local start_pos = { p_start_row, p_start_col }
   local end_pos = { p_end_row, p_end_col }
-  local params = vim.lsp.util.make_given_range_params(start_pos, end_pos, bufnr)
+  local params = vim.lsp.util.make_given_range_params(start_pos, end_pos, bufnr, 'utf-16')
 
   local tx, rx = async.control.channel.oneshot()
 
@@ -110,9 +87,6 @@ M.hover_node_and_match = function(bufnr, node, predicate)
       and result.contents ~= nil
       and result.contents.value ~= nil
       and predicate(result.contents.value)
-
-    -- vim.print(result)
-    -- M.print_ts_node(bufnr, node)
 
     tx(is_zio)
   end)

@@ -1,19 +1,36 @@
+# TODO: IntelliJ ZIO Plugin Parity Roadmap
 
-# TODOs:
+## Completed (35 patterns)
 
-1. How to reliably wait for metals to get fully initialized before making lsp requests
-2. How to trigger diagnostics rebuild after "undo", sometimes after code-action diagnostic never shows up
-3. Add hints that promote usage of:
-    * .bimap 
-    * .when 
-    * .unless 
-    * .exitCode 
-    * .delay 
-    * .foreach 
-    * .foreachPar
-    * .tap/.tapError/.tapBoth
-4. Add a hint if forgot to use a combinator like *> (zipRight), as this is very likely a developer mistake
+All low- and medium-complexity patterns are implemented. See `AGENTS.md` §5.1 for the full pattern catalog.
 
+## Future Work
 
-Take ideas from successful Intellij IDEA plugin made by Igal Tabachnik:  
-https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features
+### Type Mode Detection (CanFail, NeedsEnv) 🔴
+- `CanFail`: warn when using failable operations on infallible ZIO
+- `NeedsEnv`: warn when using `.provide*` on effects that don't require an environment
+- LSP-dependent (needs type inference from Metals)
+
+### If-Guard Detection in For-Comprehension 🔴
+- Detect patterns that throw in for-comprehension guards
+- Suggest `filter` or checked operations instead
+
+### Wrapping Option/Future/Try/Either in ZIO 🔴
+- Detect manual pattern matching or method calls that convert types
+- Suggest `ZIO.from*` equivalents
+
+### Yield Effect in For-Comprehension 🔴
+- Detect yielding a ZIO effect without flatMapping
+- Suggest `flatten` or appropriate combinator
+
+## Known Limitations
+
+1. **Metals Indexing** — Diagnostics only appear after Metals finishes indexing. Editing another file can trigger re-indexing.
+2. **Diagnostics Refresh** — Diagnostics sometimes don't refresh after undo.
+3. **Whitespace Sensitivity** — Some queries don't match across newlines (e.g., `ZIO\n.unit`).
+4. **No Alias Support** — Patterns match literal names only; renamed imports or type aliases are not recognized.
+
+## References
+- [IntelliJ ZIO Plugin](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features)
+- [ZIO Documentation](https://zio.dev/)
+- [Treesitter Query Language](https://tree-sitter.github.io/tree-sitter/using-parsers#query-syntax)

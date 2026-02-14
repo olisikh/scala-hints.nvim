@@ -1,72 +1,53 @@
-local null_ls = require('null-ls')
-local async = require('plenary.async')
-local utils = require('scala-hints.utils')
 local constants = require('scala-hints.constants')
-
-local lang = constants.lang
-local source = constants.source
-
-local diagnostics = require('scala-hints.diagnostics')
-local actions = require('scala-hints.actions')
+local client = require('scala-hints.client')
+local semantic = require('scala-hints.semantic')
+local diagnostics_config = require('scala-hints.diagnostics_config')
+local logger = require('scala-hints.logger').new('init')
 
 local M = {}
 
-M.setup = function()
-  null_ls.register({
-    name = source,
-    method = null_ls.methods.DIAGNOSTICS,
-    filetypes = { lang },
-    generator = {
-      async = true,
-      fn = function(context, done)
-        -- vim.print(context)
+--- Function to instantiate the plugin
+---@param _opts table|nil options
+---@return table plugin object
+M.setup = function(_opts)
+  logger.info('Module initializing')
 
-        local bufnr = context.bufnr
-        local method = context.lsp_method
-        -- local content = context.lsp_params.textDocument.text
+  semantic.configure(_opts)
+  diagnostics_config.configure(_opts)
 
-        -- vim.print(method)
-        -- vim.print(context)
+  -- Listen for Metals attaching to Scala buffers.
+  -- When Metals is ready we start (or reuse) our in-process LSP client
+  -- and attach it to the same buffer.
+  local group = vim.api.nvim_create_augroup('ScalaHints', { clear = true })
 
-        if method == 'textDocument/didOpen' then
-          local ok, metals = utils.run_or_timeout(function()
-            return utils.ensure_metals(bufnr)
-          end, 10000)
+  vim.api.nvim_create_autocmd('LspAttach', {
+    group = group,
+    callback = function(event)
+      local bufnr = event.buf
+      if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+      end
 
-          if not ok then
-            vim.notify(string.format('Metals is not ready, will check in later: %s', metals), vim.log.levels.WARN)
-            return done(nil)
-            -- else
-            --   vim.notify('Metals is OK')
-          end
-        end
+      -- Only act on Scala buffers
+      if vim.bo[bufnr].filetype ~= constants.lang then
+        return
+      end
 
-        diagnostics.collect_diagnostics(bufnr, done)
-      end,
-    },
+      -- Only act when Metals attaches
+      local attached_client_id = event.data and event.data.client_id
+      local attached_client = attached_client_id and vim.lsp.get_client_by_id(attached_client_id)
+      if not attached_client or attached_client.name ~= 'metals' then
+        return
+      end
+
+      logger.info('Metals attached to buffer ' .. bufnr .. ', starting scala-hints client')
+      client.start(bufnr)
+    end,
   })
 
-  null_ls.register({
-    name = source,
-    method = null_ls.methods.CODE_ACTION,
-    filetypes = { lang },
-    generator = {
-      async = true,
-      fn = function(context, done)
-        -- vim.print(context)
 
-        local bufnr = context.bufnr
-        local range = context.lsp_params.range
-
-        local start_row = range['start'].line
-        local start_col = range['start'].character
-        local end_row = range['end'].line
-        local end_col = range['end'].character
-
-        actions.resolve_actions(bufnr, start_row, end_row, done)
-      end,
-    },
-  })
+  logger.info('Plugin initialized')
+  return M
 end
 
 return M
