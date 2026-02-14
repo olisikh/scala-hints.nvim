@@ -79,7 +79,7 @@ return {
   },
 
   -- ZIO.fail(ex).orDie ~> ZIO.die(ex)
-  fail_exception_or_die = {
+  zio_die = {
     query = parse_query([[
 (   
   (call_expression
@@ -123,7 +123,7 @@ return {
   )
   (arguments
     (lambda_expression
-      parameters: [(wildcard) (identifier)]
+      parameters: (wildcard)
       (unit)
     )
   ) @_3
@@ -260,6 +260,50 @@ return {
     end,
   },
 
+  -- x.zipRight(v) ~> x *> v
+  zip_right_operator = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "zipRight")
+  )
+  arguments: (arguments (_) @_3) @_4
+)
+]]),
+    handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
+
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
+
+              local value_text = utils.get_node_text(bufnr, value)
+              done({
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                replacement = ' *> ' .. value_text,
+                title = 'ZIO: replace .zipRight(' .. value_text .. ') with *> ' .. value_text,
+              })
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
   -- x.tap(_ => v) ~> x <* v / x.zipLeft(v)
   zip_left_value = {
     query = parse_query([[
@@ -386,7 +430,7 @@ return {
   )
   arguments: (arguments
     (lambda_expression
-      parameters: [(wildcard) (identifier)]
+      parameters: (wildcard)
       (_) @_3 (#not-eq? @_3 "()")
     )
   ) @_4
@@ -523,6 +567,43 @@ return {
           action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
           replacement = 'ZIO.' .. replacement .. '(' .. collection_text .. ')' .. value_text,
           title = 'ZIO: replace ZIO.' .. foreach_text .. ' with ZIO.' .. replacement,
+        },
+      }
+    end,
+  },
+
+  -- ZIO.foreachPar(coll)(f) ~> ZIO.foreachParN(n)(coll)(f)
+  foreach_par_n = {
+    query = parse_query([[
+(call_expression
+  function: (call_expression
+    function: (field_expression
+      value: (identifier) @_1 (#eq? @_1 "ZIO")
+      field: (identifier) @_2 (#eq? @_2 "foreachPar")
+    ) @_3
+    arguments: (arguments (_) @_4) @_5
+  ) @_6
+  arguments: (arguments (_) @_7) @_8
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[3][1]
+      local collection = matches[4][1]
+      local fn_arg = matches[7][1]
+      local finish = matches[8][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local collection_text = utils.get_node_text(bufnr, collection)
+      local fn_text = utils.get_node_text(bufnr, fn_arg)
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'ZIO.foreachParN(n)(' .. collection_text .. ')(' .. fn_text .. ')',
+          title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
         },
       }
     end,
@@ -1045,6 +1126,47 @@ return {
     end,
   },
 
+  -- layer.build.use(effect.provide) ~> effect.provideLayer(layer)
+  -- layer.build.use(effect.provideLayer) ~> effect.provideLayer(layer)
+  provide_layer = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "build")
+    ) @_3
+    field: (identifier) @_4 (#eq? @_4 "use")
+  ) @_5
+  arguments: (arguments
+    (field_expression
+      value: (_) @_6
+      field: (identifier) @_7 (#any-of? @_7 "provide" "provideLayer")
+    ) @_8
+  )
+) @_9
+]]),
+    handler = function(bufnr, matches)
+      local layer = matches[1][1]
+      local effect = matches[6][1]
+      local start = matches[9][1]
+
+      local start_row, start_col, end_row, end_col = start:range()
+
+      local layer_text = utils.get_node_text(bufnr, layer)
+      local effect_text = utils.get_node_text(bufnr, effect)
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = effect_text .. '.provideLayer(' .. layer_text .. ')',
+          title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+        },
+      }
+    end,
+  },
+
   -- ZIO.access(identity) ~> ZIO.service[A]
   -- Note: This is informational - suggests using ZIO.service[A]
   zio_service = {
@@ -1074,6 +1196,578 @@ return {
           action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
           replacement = 'ZIO.service',
           title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+        },
+      }
+    end,
+  },
+
+  -- effect.map(okFn).mapError(errFn) ~> effect.bimap(errFn, okFn)
+  -- or effect.mapError(errFn).map(okFn) ~> effect.bimap(errFn, okFn)
+  bimap = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (call_expression
+      function: (field_expression
+        value: (_) @_1
+        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
+      ) @_3
+      arguments: (arguments (_) @_4)
+    ) @_5
+    field: (identifier) @_6 (#any-of? @_6 "map" "mapError")
+  ) @_7
+  arguments: (arguments (_) @_8)
+) @_9
+]]),
+    handler = function(bufnr, matches)
+      local effect = matches[1][1]
+      local first_method = matches[2][1]
+      local second_method = matches[6][1]
+      local start = matches[7][1]
+      local finish = matches[9][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local first_method_text = utils.get_node_text(bufnr, first_method)
+      local second_method_text = utils.get_node_text(bufnr, second_method)
+
+      -- Only suggest bimap if methods are different (one is map, one is mapError)
+      local is_valid_bimap = (first_method_text == 'map' and second_method_text == 'mapError')
+        or (first_method_text == 'mapError' and second_method_text == 'map')
+
+      if is_valid_bimap then
+        local first_arg = matches[4][1]
+        local second_arg = matches[8][1]
+        local first_arg_text = utils.get_node_text(bufnr, first_arg)
+        local second_arg_text = utils.get_node_text(bufnr, second_arg)
+
+        -- Figure out which arg is error and which is ok
+        local err_fn, ok_fn
+        if first_method_text == 'map' then
+          ok_fn = first_arg_text
+          err_fn = second_arg_text
+        else
+          err_fn = first_arg_text
+          ok_fn = second_arg_text
+        end
+
+        return {
+          {
+            diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+            action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+            replacement = '.bimap(' .. err_fn .. ', ' .. ok_fn .. ')',
+            title = 'ZIO: replace .' .. first_method_text .. '(...) .' .. second_method_text .. '(...) with .bimap(' .. err_fn .. ', ' .. ok_fn .. ')',
+          },
+        }
+      else
+        return {}
+      end
+    end,
+  },
+
+  -- effect.map(_ => ExitCode.success) ~> effect.exitCode
+  exit_code_map = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "map")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (wildcard)
+      (field_expression
+        value: (identifier) @_3 (#eq? @_3 "ExitCode")
+        field: (identifier) @_4 (#eq? @_4 "success")
+      )
+    )
+  ) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local finish = matches[5][1]
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'exitCode',
+          title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+        },
+      }
+    end,
+  },
+
+  -- effect.as(ExitCode.success) ~> effect.exitCode
+  exit_code_as = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "as")
+  )
+  arguments: (arguments
+    (field_expression
+      value: (identifier) @_3 (#eq? @_3 "ExitCode")
+      field: (identifier) @_4 (#eq? @_4 "success")
+    )
+  ) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local finish = matches[5][1]
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'exitCode',
+          title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+        },
+      }
+    end,
+  },
+
+  -- effect.fold(_ => ExitCode.failure, _ => ExitCode.success) ~> effect.exitCode
+  exit_code_fold = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "fold")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (wildcard)
+      (field_expression
+        value: (identifier) @_3 (#eq? @_3 "ExitCode")
+        field: (identifier) @_4 (#eq? @_4 "failure")
+      )
+    )
+    (lambda_expression
+      parameters: (wildcard)
+      (field_expression
+        value: (identifier) @_5 (#eq? @_5 "ExitCode")
+        field: (identifier) @_6 (#eq? @_6 "success")
+      )
+    )
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local finish = matches[7][1]
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'exitCode',
+          title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+        },
+      }
+    end,
+  },
+
+  -- effect.map(v => { sideEffect(v); v }) ~> effect.tap(v => sideEffect(v))
+  -- Detects block-style lambdas where the last expression returns the parameter unchanged.
+  tap = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "map")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (block (_) (identifier) @_4 .) @_5
+    )
+  ) @_6
+)
+
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "map")
+  )
+  arguments: (block
+    (lambda_expression
+      parameters: (identifier) @_3
+      (indented_block (_) (identifier) @_4 .) @_5
+    )
+  ) @_6
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local last_expr = matches[4][1]
+      local body_block = matches[5][1]
+      local finish = matches[6][1]
+
+      -- Verify last expression equals the parameter (handler-side check)
+      local param_text = utils.get_node_text(bufnr, param)
+      local last_text = utils.get_node_text(bufnr, last_expr)
+      if param_text ~= last_text then
+        return {}
+      end
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      -- Build body without the trailing parameter return
+      local body_parts = {}
+      local child_count = body_block:named_child_count()
+      for i = 0, child_count - 2 do
+        local child = body_block:named_child(i)
+        table.insert(body_parts, utils.get_node_text(bufnr, child))
+      end
+      local body_text = table.concat(body_parts, '; ')
+      local replacement = 'tap(' .. param_text .. ' => ' .. body_text .. ')'
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement,
+          title = 'ZIO: replace .map returning its parameter with .tap',
+        },
+      }
+    end,
+  },
+
+  -- effect.mapError(e => { logError(e); e }) ~> effect.tapError(e => logError(e))
+  -- Detects block-style lambdas where the last expression returns the parameter unchanged.
+  tap_error = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "mapError")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (block (_) (identifier) @_4 .) @_5
+    )
+  ) @_6
+)
+
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "mapError")
+  )
+  arguments: (block
+    (lambda_expression
+      parameters: (identifier) @_3
+      (indented_block (_) (identifier) @_4 .) @_5
+    )
+  ) @_6
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local last_expr = matches[4][1]
+      local body_block = matches[5][1]
+      local finish = matches[6][1]
+
+      -- Verify last expression equals the parameter (handler-side check)
+      local param_text = utils.get_node_text(bufnr, param)
+      local last_text = utils.get_node_text(bufnr, last_expr)
+      if param_text ~= last_text then
+        return {}
+      end
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      -- Build body without the trailing parameter return
+      local body_parts = {}
+      local child_count = body_block:named_child_count()
+      for i = 0, child_count - 2 do
+        local child = body_block:named_child(i)
+        table.insert(body_parts, utils.get_node_text(bufnr, child))
+      end
+      local body_text = table.concat(body_parts, '; ')
+      local replacement = 'tapError(' .. param_text .. ' => ' .. body_text .. ')'
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement,
+          title = 'ZIO: replace .mapError returning its parameter with .tapError',
+        },
+      }
+    end,
+  },
+
+  -- effect.map(v => { sideEffect(v); v }).mapError(e => { logError(e); e }) ~> effect.tapBoth(e => logError(e), v => sideEffect(v))
+  tap_both = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (call_expression
+      function: (field_expression
+        value: (_) @_1
+        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
+      ) @_3
+      arguments: (arguments
+        (lambda_expression
+          parameters: (identifier) @_4
+          (block (_) (identifier) @_5 .) @_6
+        )
+      )
+    ) @_7
+    field: (identifier) @_8 (#any-of? @_8 "map" "mapError")
+  ) @_9
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_10
+      (block (_) (identifier) @_11 .) @_12
+    )
+  )
+) @_13
+
+(call_expression
+  function: (field_expression
+    value: (call_expression
+      function: (field_expression
+        value: (_) @_1
+        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
+      ) @_3
+      arguments: (arguments
+        (lambda_expression
+          parameters: (identifier) @_4
+          (block (_) (identifier) @_5 .) @_6
+        )
+      )
+    ) @_7
+    field: (identifier) @_8 (#any-of? @_8 "map" "mapError")
+  ) @_9
+  arguments: (block
+    (lambda_expression
+      parameters: (identifier) @_10
+      (indented_block (_) (identifier) @_11 .) @_12
+    )
+  )
+) @_13
+
+(call_expression
+  function: (field_expression
+    value: (call_expression
+      function: (field_expression
+        value: (_) @_1
+        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
+      ) @_3
+      arguments: (arguments
+        (lambda_expression
+          parameters: (identifier) @_4
+          (indented_block (_) (identifier) @_5 .) @_6
+        )
+      )
+    ) @_7
+    field: (identifier) @_8 (#any-of? @_8 "map" "mapError")
+  ) @_9
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_10
+      (block (_) (identifier) @_11 .) @_12
+    )
+  )
+) @_13
+
+(call_expression
+  function: (field_expression
+    value: (call_expression
+      function: (field_expression
+        value: (_) @_1
+        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
+      ) @_3
+      arguments: (arguments
+        (lambda_expression
+          parameters: (identifier) @_4
+          (indented_block (_) (identifier) @_5 .) @_6
+        )
+      )
+    ) @_7
+    field: (identifier) @_8 (#any-of? @_8 "map" "mapError")
+  ) @_9
+  arguments: (block
+    (lambda_expression
+      parameters: (identifier) @_10
+      (indented_block (_) (identifier) @_11 .) @_12
+    )
+  )
+) @_13
+]]),
+    handler = function(bufnr, matches)
+      local first_method = matches[2][1]
+      local first_param = matches[4][1]
+      local first_last = matches[5][1]
+      local first_body = matches[6][1]
+
+      local second_method = matches[8][1]
+      local second_param = matches[10][1]
+      local second_last = matches[11][1]
+      local second_body = matches[12][1]
+
+      local start = matches[9][1]
+      local finish = matches[13][1]
+
+      local first_method_text = utils.get_node_text(bufnr, first_method)
+      local second_method_text = utils.get_node_text(bufnr, second_method)
+
+      local is_valid = (first_method_text == 'map' and second_method_text == 'mapError')
+        or (first_method_text == 'mapError' and second_method_text == 'map')
+      if not is_valid then
+        return {}
+      end
+
+      local function build_side(param_node, last_node, body_node)
+        local param_text = utils.get_node_text(bufnr, param_node)
+        local last_text = utils.get_node_text(bufnr, last_node)
+        if param_text ~= last_text then
+          return nil
+        end
+
+        local child_count = body_node:named_child_count()
+        if child_count < 2 then
+          return nil
+        end
+
+        local body_parts = {}
+        for i = 0, child_count - 2 do
+          local child = body_node:named_child(i)
+          table.insert(body_parts, utils.get_node_text(bufnr, child))
+        end
+
+        local body_text = table.concat(body_parts, '; ')
+        if body_text == '' then
+          return nil
+        end
+
+        return { param = param_text, body = body_text }
+      end
+
+      local first_side = build_side(first_param, first_last, first_body)
+      local second_side = build_side(second_param, second_last, second_body)
+      if not (first_side and second_side) then
+        return {}
+      end
+
+      local err_side
+      local ok_side
+      if first_method_text == 'mapError' then
+        err_side = first_side
+        ok_side = second_side
+      else
+        err_side = second_side
+        ok_side = first_side
+      end
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local replacement = 'tapBoth(' .. err_side.param .. ' => ' .. err_side.body .. ', ' .. ok_side.param .. ' => ' .. ok_side.body .. ')'
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement,
+          title = 'ZIO: replace map/mapError side-effects with .tapBoth',
+        },
+      }
+    end,
+  },
+
+  -- if (condition) effect else ZIO.unit ~> effect.when(condition)
+  when = {
+    query = parse_query([[
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (field_expression
+    value: (identifier) @_3 (#eq? @_3 "ZIO")
+    field: (identifier) @_4 (#eq? @_4 "unit")
+  ) @_5
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local consequence = matches[2][1]
+      local start = matches[5][1]
+      local finish = matches[6][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local condition_text = utils.get_node_text(bufnr, condition)
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = '.when(' .. condition_text .. ')',
+          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. condition_text .. ')',
+        },
+      }
+    end,
+  },
+
+  -- if (!condition) effect else ZIO.unit ~> effect.unless(condition)
+  unless = {
+    query = parse_query([[
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (field_expression
+    value: (identifier) @_3 (#eq? @_3 "ZIO")
+    field: (identifier) @_4 (#eq? @_4 "unit")
+  ) @_5
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local start = matches[5][1]
+      local finish = matches[6][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local condition_text = utils.get_node_text(bufnr, condition)
+      local normalized = condition_text:gsub('%s+', '')
+      if not (normalized:sub(1, 2) == '(!' or normalized:sub(1, 1) == '!') then
+        return {}
+      end
+
+      local inner = condition_text
+      inner = inner:gsub('^%s*%(!', '')
+      inner = inner:gsub('^%s*!', '')
+      inner = inner:gsub('%)%s*$', '')
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = '.unless(' .. inner .. ')',
+          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. inner .. ')',
         },
       }
     end,

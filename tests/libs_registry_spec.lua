@@ -28,19 +28,21 @@ describe('libs registry', function()
       end
     end)
 
-    it('contains all 20 known ZIO queries', function()
+    it('contains all 35 known ZIO queries', function()
       local expected = {
         'zio/succeed_unit',
-        'zio/fail_exception_or_die',
+        'zio/zio_die',
         'zio/map_unit',
         'zio/zip_right_unit',
         'zio/as_unit',
         'zio/zip_right_value',
+        'zio/zip_right_operator',
         'zio/zip_left_value',
         'zio/flat_map_value',
         'zio/map_value',
         'zio/catch_all_unit',
         'zio/zio_foreach',
+        'zio/foreach_par_n',
         'zio/fold_cause_ignore',
         'zio/or_else_fail',
         'zio/or_else_fail2',
@@ -50,6 +52,19 @@ describe('libs registry', function()
         'zio/zio_none',
         'zio/zio_some',
         'zio/zio_either',
+        'zio/delay',
+        'zio/to_layer',
+        'zio/provide_layer',
+        'zio/zio_service',
+        'zio/bimap',
+        'zio/exit_code_map',
+        'zio/exit_code_as',
+        'zio/exit_code_fold',
+        'zio/tap',
+        'zio/tap_error',
+        'zio/tap_both',
+        'zio/when',
+        'zio/unless',
       }
       local all = libs.get_all_queries()
       for _, name in ipairs(expected) do

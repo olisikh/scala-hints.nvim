@@ -81,21 +81,23 @@ vim.diagnostic.set(...)       vim.lsp.handlers['textDocument/codeAction']
 ## 5. Pattern Catalog & IntelliJ Parity
 
 ### 5.1 Core Implemented Patterns
-The following 23 patterns are fully implemented in [lua/scala-hints/libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
+The following 35 patterns are fully implemented in [lua/scala-hints/libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
 
 | Pattern Name | Detection Summary | Replacement | IntelliJ | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` | ✓ | ✅ |
-| `fail_exception_or_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` | ✓ | ✅ |
+| `zio_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` | ✓ | ✅ |
 | `map_unit` | `.map(_ => ...)` (any param) | `.unit` | ✓ | ✅ |
 | `as_unit` | `.as(())` | `.unit` | ✓ | ✅ |
 | `zip_right_unit` | `*> ZIO.unit` | `.unit` | ✓ | ✅ |
 | `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` | ✓ | ✅ |
+| `zip_right_operator` | `.zipRight(v)` | `*> v` | ✓ | ✅ |
 | `zip_left_value` | `.tap(...) not used` | `.zipLeft` | ✓ | ✅ |
 | `flat_map_value` | `.flatMap(_ => v)` | `.zipRight` | ✓ | ✅ |
 | `map_value` | `.map(_ => v)` | `.as(v)` | ✓ | ✅ |
 | `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` | ✓ | ✅ |
 | `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach` | ✓ | ✅ |
+| `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` | ✓ | ✅ |
 | `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` | ✓ | ✅ |
 | `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` | ✓ | ✅ |
 | `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` | ✓ | ✅ |
@@ -107,29 +109,26 @@ The following 23 patterns are fully implemented in [lua/scala-hints/libs/zio/que
 | `zio_either` | `ZIO.succeed(Left/Right(v))` | `ZIO.left/right(v)` | ✓ | ✅ |
 | `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` | ✓ | ✅ |
 | `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` | ✓ | ✅ |
+| `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` | ✓ | ✅ |
 | `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` | ✓ | ✅ |
+| `bimap` | `effect.map(ok).mapError(err)` | `.bimap(err, ok)` | ✓ | ✅ |
+| `tap` | `effect.map(v => { sideEffect(v); v })` | `.tap(...)` | ✓ | ✅ |
+| `tap_error` | `effect.mapError(e => { sideEffect(e); e })` | `.tapError(...)` | ✓ | ✅ |
+| `tap_both` | `map/mapError` side-effects | `.tapBoth(...)` | ✓ | ✅ |
+| `when` | `if (cond) eff else ZIO.unit` | `eff.when(cond)` | ✓ | ✅ |
+| `unless` | `if (!cond) eff else ZIO.unit` | `eff.unless(cond)` | ✓ | ✅ |
+| `exit_code_map` | `.map(_ => ExitCode.success)` | `.exitCode` | ✓ | ✅ |
+| `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` | ✓ | ✅ |
+| `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` | ✓ | ✅ |
 
 ### 5.2 Placeholder Patterns (Stub Implementations)
-The following patterns exist but need full query + handler implementation:
-
-| Pattern Name | Detection Summary | Replacement | Priority | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| `exit_code*` (3 variants) | `.map/as/fold` → `ExitCode.success` | `.exitCode` | Medium | 🔄 |
-| `zio_die` | `ZIO.fail(...).orDie` | `ZIO.die(...)` | Low | 🔄 |
+All placeholder patterns are now implemented.
 
 ### 5.3 Missing Patterns (IntelliJ Parity Gaps)
-The following 10+ patterns from the IntelliJ ZIO plugin are not yet implemented:
+The following patterns from the IntelliJ ZIO plugin are not yet implemented:
 
 | Pattern | Detection | Replacement | Complexity | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| `.delay` | `ZIO.sleep(d) *> eff` | `eff.delay(d)` | Low | ⭕ |
-| `.provideLayer` | `layer.build.use(eff.provide)` | `eff.provideLayer(layer)` | Low | ⭕ |
-| `.toLayer` | `ZLayer.fromEffect(eff)` (deprecated) | `eff.toLayer` | Low | ⭕ |
-| `ZIO.service` | `ZIO.access(_.get)` with env | `ZIO.service[A]` | Low | ⭕ |
-| `.bimap` | Chained `.map().mapError()` | `.bimap(errFn, okFn)` | Medium | ⭕ |
-| `.tap/.tapError` | Effects discarded in map | `.tap(fn)` etc | Medium | ⭕ |
-| `.when`/`.unless` | `if (c) eff else ZIO.unit` | `eff.when(c)` | Medium | ⭕ |
-| `.foreachParN` | `ZIO.foreachPar(coll)(f)` | `.foreachParN(n)(coll)(f)` | Medium | ⭕ |
 | Type Modes | `CanFail`, `NeedsEnv`, contravariance | Mode-specific suggestions | High | ⭕ |
 | Advanced | Wrapping `Option/Future/Try`, yield in for | Type-specific wrapping | High | ⭕ |
 
@@ -166,7 +165,6 @@ The following items are tracked for future implementation (from `TODO.md`):
     - `.delay`
     - `.foreach` / `.foreachPar`
     - `.tap` / `.tapError` / `.tapBoth`
-- **Missing Combinators**: Add a hint for forgotten `*>` (zipRight) usage.
 - **Inspiration**: Reference the [IntelliJ ZIO plugin](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features) for additional feature ideas.
 
 ## 9. Future Enhancement Ideas

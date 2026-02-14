@@ -1,6 +1,6 @@
 # TODO: IntelliJ ZIO Plugin Parity Roadmap
 
-## Completed (20 patterns - ✅)
+## Completed (35 patterns - ✅)
 - ✅ `.unit` (from `.succeed(())`, `.map(_ => ())`, `.as(())`)
 - ✅ `.ignore` (from `.catchAll(_ => ZIO.unit)`, `.foldCause(...)`)
 - ✅ `.as` / `.zipRight` (from `*> ZIO.succeed(v)`, `.flatMap(_ => v)`, `.map(_ => v)`)
@@ -11,6 +11,18 @@
 - ✅ `.orElseFail` (from `.mapError(...)`, `.orElse(ZIO.fail(...))`, `.flatMapError(...)`)
 - ✅ `ZIO.succeed(())` → `ZIO.unit`
 - ✅ Type aliases: `ZIO[Any, Nothing, A]` → `UIO[A]`, `ZLayer[Any, Nothing, A]` → `ULayer[A]`
+- ✅ `.delay` (from `ZIO.sleep(d) *> effect`)
+- ✅ `.provideLayer` (from `layer.build.use(effect.provide)`)
+- ✅ `.toLayer` (from `ZLayer.fromEffect(effect)`)
+- ✅ `ZIO.service` (from `ZIO.access(identity)`)
+- ✅ `.bimap` (from chained `.map`/`.mapError`)
+- ✅ `.tap` / `.tapError` (block-style lambdas returning their parameter)
+- ✅ `.when` / `.unless` (from `if (cond) effect else ZIO.unit`)
+- ✅ `.tapBoth` (chained `map`/`mapError` side-effects)
+- ✅ `.foreachParN` (from `ZIO.foreachPar`)
+- ✅ `.exitCode` (from `.map`, `.as`, `.fold` patterns)
+- ✅ `zio_die` (from `ZIO.fail(ex).orDie`)
+- ✅ `*>` (zipRight operator hint from `.zipRight`)
 
 ## High Priority - Missing Low-Complexity Patterns
 
@@ -26,7 +38,7 @@ effect.delay(d)
 - **Complexity**: Low 🟢
 - **Testing**: Pure pattern matching (no LSP required)
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 2. `.provideLayer` Pattern
 ```scala
@@ -40,7 +52,7 @@ effect.provideLayer(layer)
 - **Complexity**: Low 🟢
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 3. `.toLayer` Pattern
 ```scala
@@ -53,7 +65,7 @@ effect.toLayer
 - **Complexity**: Low 🟢
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 4. `ZIO.service[A]` Pattern
 ```scala
@@ -67,7 +79,7 @@ ZIO.service[A]
 - **Complexity**: Low-Medium 🟡
 - **Testing**: LSP-dependent (needs type from Metals hover)
 - **Files to update**: `queries.lua`, `lsp_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ## Medium Priority - Missing Medium-Complexity Patterns
 
@@ -83,7 +95,7 @@ effect.bimap(errFn, okFn)
 - **Complexity**: Medium 🟡
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 6. `.tap` / `.tapError` / `.tapBoth` Patterns
 ```scala
@@ -99,7 +111,7 @@ effect.tapBoth(doSideEffect, doSideEffect)
 - **Complexity**: Medium 🟡
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 7. `.when` / `.unless` Patterns
 ```scala
@@ -114,7 +126,7 @@ effect.unless(condition)
 - **Complexity**: Medium 🟡
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+-- **Status**: ✅ Completed
 
 ### 8. `.foreachParN` Pattern
 ```scala
@@ -128,11 +140,11 @@ ZIO.foreachParN(n)(collection)(f)
 - **Complexity**: Medium 🟡
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: ⭕ Not Started
+- **Status**: ✅ Completed
 
 ## Low Priority - Complete Placeholder Implementations
 
-### 9. `.exitCode` Variants (Placeholder)
+### 9. `.exitCode` Variants
 ```scala
 // Variants:
 exit_code: .map(_ => ExitCode.success)
@@ -145,7 +157,7 @@ exit_code3: .fold(_, _) returning ExitCode
 - **Complexity**: Low 🟢
 - **Testing**: Pure pattern matching
 - **Files to update**: `queries.lua`, `pure_queries_spec.lua`
-- **Status**: 🔄 Placeholder (needs implementation)
+-- **Status**: ✅ Completed
 
 ## Lower Priority - Advanced/High-Complexity Patterns
 
@@ -195,19 +207,19 @@ exit_code3: .fold(_, _) returning ExitCode
 ## Implementation Checklist
 
 - [ ] High Priority Phase 1 (Low-complexity patterns)
-  - [ ] `.delay`
-  - [ ] `.provideLayer`
-  - [ ] `.toLayer`
-  - [ ] `ZIO.service`
+  - [x] `.delay`
+  - [x] `.provideLayer`
+  - [x] `.toLayer`
+  - [x] `ZIO.service`
   
 - [ ] High Priority Phase 2 (Medium-complexity patterns)
-  - [ ] `.bimap`
-  - [ ] `.tap` / `.tapError` / `.tapBoth`
-  - [ ] `.when` / `.unless`
-  - [ ] `.foreachParN`
+  - [x] `.bimap`
+  - [x] `.tap` / `.tapError` / `.tapBoth`
+  - [x] `.when` / `.unless`
+  - [x] `.foreachParN`
   
 - [ ] Medium Priority (Complete placeholders)
-  - [ ] `.exitCode` variants
+  - [x] `.exitCode` variants
   
 - [ ] Lower Priority (Defer to later phases)
   - [ ] CanFail / NeedsEnv type modes

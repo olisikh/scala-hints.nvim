@@ -15,14 +15,14 @@ describe('ZIO pure queries (no LSP)', function()
   end)
 
   ---------------------------------------------------------------------------
-  -- fail_exception_or_die
+  -- zio_die
   ---------------------------------------------------------------------------
-  describe('fail_exception_or_die', function()
+  describe('zio_die', function()
     it('matches ZIO.fail(ex).orDie and suggests ZIO.die(ex)', function()
       local source = [[val x = ZIO.fail(new RuntimeException("boom")).orDie]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, pending = H.run_handler(bufnr, root, queries.fail_exception_or_die)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_die)
 
       assert.are.equal(0, #pending)
       assert.are.equal(1, #ready)
@@ -36,7 +36,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.fail(new Exception("err"))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, pending = H.run_handler(bufnr, root, queries.fail_exception_or_die)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_die)
       assert.are.equal(0, #ready)
       assert.are.equal(0, #pending)
     end)
@@ -188,6 +188,33 @@ describe('ZIO pure queries (no LSP)', function()
         replacement = 'ZIO.foreachPar(items)(process)',
         title = 'ZIO: replace ZIO.collectAllPar with ZIO.foreachPar',
       })
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- foreach_par_n
+  ---------------------------------------------------------------------------
+  describe('foreach_par_n', function()
+    it('matches ZIO.foreachPar(coll)(f) and suggests ZIO.foreachParN', function()
+      local source = [[val x = ZIO.foreachPar(items)(process)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.foreach_par_n)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'ZIO.foreachParN(n)(items)(process)',
+        title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
+      })
+    end)
+
+    it('does not match ZIO.foreach', function()
+      local source = [[val x = ZIO.foreach(items)(process)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.foreach_par_n)
+      assert.are.equal(0, #ready)
     end)
   end)
 
@@ -509,6 +536,45 @@ describe('ZIO pure queries (no LSP)', function()
   end)
 
   ---------------------------------------------------------------------------
+  -- provide_layer
+  ---------------------------------------------------------------------------
+  describe('provide_layer', function()
+    it('matches layer.build.use(effect.provide) and suggests effect.provideLayer(layer)', function()
+      local source = [[val x = layer.build.use(effect.provide)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.provide_layer)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'effect.provideLayer(layer)',
+        title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+      })
+    end)
+
+    it('matches layer.build.use(effect.provideLayer) and suggests effect.provideLayer(layer)', function()
+      local source = [[val x = layer.build.use(effect.provideLayer)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.provide_layer)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'effect.provideLayer(layer)',
+      })
+    end)
+
+    it('does not match effect.provideLayer(layer)', function()
+      local source = [[val x = effect.provideLayer(layer)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.provide_layer)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
   -- zio_service
   ---------------------------------------------------------------------------
   describe('zio_service', function()
@@ -538,6 +604,401 @@ describe('ZIO pure queries (no LSP)', function()
       bufnr, root = H.parse_scala(source)
 
       local ready, _ = H.run_handler(bufnr, root, queries.zio_service)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- bimap
+  ---------------------------------------------------------------------------
+  describe('bimap', function()
+    it('matches effect.map(okFn).mapError(errFn) and suggests bimap', function()
+      local source = [[val x = effect.map(successHandler).mapError(errorHandler)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.bimap)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.bimap(errorHandler, successHandler)',
+      })
+    end)
+
+    it('matches effect.mapError(errFn).map(okFn) and suggests bimap', function()
+      local source = [[val x = effect.mapError(errorHandler).map(successHandler)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.bimap)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.bimap(errorHandler, successHandler)',
+      })
+    end)
+
+    it('does not match effect.map(...).map(...)', function()
+      local source = [[val x = effect.map(f1).map(f2)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.bimap)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match effect.mapError(...).mapError(...)', function()
+      local source = [[val x = effect.mapError(e1).mapError(e2)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.bimap)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- exit_code_map
+  ---------------------------------------------------------------------------
+  describe('exit_code_map', function()
+    it('matches .map(_ => ExitCode.success) and suggests .exitCode', function()
+      local source = [[val x = effect.map(_ => ExitCode.success)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_map)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'exitCode',
+        title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+      })
+    end)
+
+    it('does not match .map(_ => ExitCode.failure)', function()
+      local source = [[val x = effect.map(_ => ExitCode.failure)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_map)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .map(x => x * 2)', function()
+      local source = [[val x = effect.map(x => x * 2)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_map)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- exit_code_as
+  ---------------------------------------------------------------------------
+  describe('exit_code_as', function()
+    it('matches .as(ExitCode.success) and suggests .exitCode', function()
+      local source = [[val x = effect.as(ExitCode.success)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_as)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'exitCode',
+        title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+      })
+    end)
+
+    it('does not match .as(ExitCode.failure)', function()
+      local source = [[val x = effect.as(ExitCode.failure)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_as)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .as(42)', function()
+      local source = [[val x = effect.as(42)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_as)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- exit_code_fold
+  ---------------------------------------------------------------------------
+  describe('exit_code_fold', function()
+    it('matches .fold(_ => ExitCode.failure, _ => ExitCode.success)', function()
+      local source = [[val x = effect.fold(_ => ExitCode.failure, _ => ExitCode.success)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_fold)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'exitCode',
+        title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+      })
+    end)
+
+    it('does not match .fold with wrong ExitCode order', function()
+      local source = [[val x = effect.fold(_ => ExitCode.success, _ => ExitCode.failure)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_fold)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .fold with non-ExitCode values', function()
+      local source = [[val x = effect.fold(_ => left, _ => right)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_fold)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- tap
+  ---------------------------------------------------------------------------
+  describe('tap', function()
+    it('matches .map with block returning parameter (paren-style)', function()
+      local source = [[val x = effect.map(v => { sideEffect(v); v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tap(v => sideEffect(v))',
+        title = 'ZIO: replace .map returning its parameter with .tap',
+      })
+    end)
+
+    it('matches .map with block returning parameter (brace-style)', function()
+      local source = "val x = effect.map { v =>\n  sideEffect(v)\n  v\n}"
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tap(v => sideEffect(v))',
+      })
+    end)
+
+    it('matches .map with multi-statement block', function()
+      local source = [[val x = effect.map(v => { log(v); notify(v); v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tap(v => log(v); notify(v))',
+      })
+    end)
+
+    it('does not match .map without block (simple transform)', function()
+      local source = [[val x = effect.map(v => v * 2)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .map with wildcard parameter', function()
+      local source = [[val x = effect.map(_ => sideEffect())]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match when last expr differs from parameter', function()
+      local source = [[val x = effect.map(v => { sideEffect(v); otherVal })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .mapError', function()
+      local source = [[val x = effect.mapError(e => { logError(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- tap_error
+  ---------------------------------------------------------------------------
+  describe('tap_error', function()
+    it('matches .mapError with block returning parameter (paren-style)', function()
+      local source = [[val x = effect.mapError(e => { logError(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tapError(e => logError(e))',
+        title = 'ZIO: replace .mapError returning its parameter with .tapError',
+      })
+    end)
+
+    it('matches .mapError with block returning parameter (brace-style)', function()
+      local source = "val x = effect.mapError { e =>\n  logError(e)\n  e\n}"
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tapError(e => logError(e))',
+      })
+    end)
+
+    it('does not match .mapError without block', function()
+      local source = [[val x = effect.mapError(e => newError)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match .map', function()
+      local source = [[val x = effect.map(v => { sideEffect(v); v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match when last expr differs from parameter', function()
+      local source = [[val x = effect.mapError(e => { logError(e); newErr })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- tap_both
+  ---------------------------------------------------------------------------
+  describe('tap_both', function()
+    it('matches map then mapError with side-effect blocks', function()
+      local source = [[val x = effect.map(v => { log(v); v }).mapError(e => { logError(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_both)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tapBoth(e => logError(e), v => log(v))',
+      })
+    end)
+
+    it('matches mapError then map with side-effect blocks', function()
+      local source = [[val x = effect.mapError(e => { logError(e); e }).map(v => { log(v); v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_both)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'tapBoth(e => logError(e), v => log(v))',
+      })
+    end)
+
+    it('does not match when map body is not a block', function()
+      local source = [[val x = effect.map(v => v * 2).mapError(e => { logError(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.tap_both)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- when
+  ---------------------------------------------------------------------------
+  describe('when', function()
+    it('matches if (condition) effect else ZIO.unit and suggests when', function()
+      local source = [[val x = if (check) effect else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.when((check))',
+      })
+    end)
+
+    it('does not match if without ZIO.unit alternative', function()
+      local source = [[val x = if (check) effect else other]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match without if-else structure', function()
+      local source = [[val x = effect.when(check)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- unless
+  ---------------------------------------------------------------------------
+  describe('unless', function()
+    it('matches if (!condition) effect else ZIO.unit and suggests unless', function()
+      local source = [[val x = if (!check) effect else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.unless(check)',
+      })
+    end)
+
+    it('matches if (!(condition)) effect else ZIO.unit and suggests unless', function()
+      local source = [[val x = if (!(check)) effect else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.unless((check))',
+      })
+    end)
+
+    it('does not match if (condition) effect else ZIO.unit', function()
+      local source = [[val x = if (check) effect else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match if (!condition) effect else other', function()
+      local source = [[val x = if (!check) effect else other]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
       assert.are.equal(0, #ready)
     end)
   end)

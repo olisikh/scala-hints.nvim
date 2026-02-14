@@ -117,6 +117,13 @@ describe('ZIO diagnostics/actions integration', function()
         expected_count = 2, -- *> and .zipRight
       },
       {
+        name = 'zip_right_operator',
+        source = [[val x = effect.zipRight(otherEffect)]],
+        query_name = 'zip_right_operator',
+        query_def = queries.zip_right_operator,
+        expected_count = 1,
+      },
+      {
         name = 'map_value',
         source = [[val x = effect.map(_ => 42)]],
         query_name = 'map_value',
@@ -129,8 +136,7 @@ describe('ZIO diagnostics/actions integration', function()
         source = [[val x = effect.map(x => 42)]],
         query_name = 'map_value',
         query_def = queries.map_value,
-        expected_count = 1,
-        expected_replacement = 'as(42)',
+        expected_count = 0, -- named params no longer match; only wildcard _ does
       },
       {
         name = 'catch_all_unit',
