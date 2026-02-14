@@ -1,13 +1,18 @@
---- Tests for ZIO queries that do NOT require LSP interaction.
---- These handlers are purely Treesitter-based and return results synchronously.
+--- Tests for ZIO queries with hover verification.
+--- All handlers use semantic.hover_predicate (mocked to return true).
 
 local H = require('tests.helpers')
 local queries = require('scala-hints.libs.zio.queries')
 
-describe('ZIO pure queries (no LSP)', function()
+describe('ZIO queries with hover verification', function()
   local bufnr
 
+  before_each(function()
+    H.mock_hover_predicate(true)
+  end)
+
   after_each(function()
+    H.restore_mocks()
     if bufnr then
       H.cleanup_buf(bufnr)
       bufnr = nil
@@ -24,9 +29,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_die)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.die(new RuntimeException("boom"))',
         title = 'ZIO: replace ZIO.fail(new RuntimeException("boom")).orDie with ZIO.die(new RuntimeException("boom"))',
       })
@@ -52,9 +59,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zip_right_unit)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = '.unit',
       })
     end)
@@ -63,7 +72,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect *> ZIO.succeed(42)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zip_right_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.zip_right_unit)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -78,9 +87,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.as_unit)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'unit',
         title = 'ZIO: replace .as(()) with .unit',
       })
@@ -90,7 +101,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.as(42)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.as_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.as_unit)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -105,9 +116,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zip_right_value)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = '.as(42)',
         title = 'ZIO: replace *> ZIO.succeed(42) with .as(42)',
       })
@@ -117,7 +130,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect *> ZIO.succeed(())]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zip_right_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.zip_right_value)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -132,9 +145,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail3)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'orElseFail(newErr)',
       })
     end)
@@ -150,9 +165,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.fold_cause_ignore)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ignore',
         title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
       })
@@ -169,9 +186,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_foreach)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.foreach(items)(process)',
         title = 'ZIO: replace ZIO.collectAll with ZIO.foreach',
       })
@@ -181,10 +200,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.collectAllPar(items.map(process))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_foreach)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_foreach)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.foreachPar(items)(process)',
         title = 'ZIO: replace ZIO.collectAllPar with ZIO.foreachPar',
       })
@@ -201,9 +222,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.foreach_par_n)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.foreachParN(n)(items)(process)',
         title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
       })
@@ -213,7 +236,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.foreach(items)(process)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.foreach_par_n)
+      local ready, pending = H.run_handler(bufnr, root, queries.foreach_par_n)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -226,11 +249,13 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Any, Nothing, Int] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
 
       -- ZIO[Any, Nothing, A] matches 3 aliases: UIO, IO[Nothing, _], URIO[Any, _]
-      assert.is_true(#ready >= 1)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.is_true(#results >= 1)
+      H.assert_result(results[1], {
         replacement = 'UIO[Int]',
       })
     end)
@@ -239,11 +264,13 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Any, Throwable, String] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
 
       -- ZIO[Any, Throwable, A] matches 3 aliases: Task, IO[Throwable, _], RIO[Any, _]
-      assert.is_true(#ready >= 1)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.is_true(#results >= 1)
+      H.assert_result(results[1], {
         replacement = 'Task[String]',
       })
     end)
@@ -252,10 +279,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Any, AppError, Int] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'IO[AppError, Int]',
       })
     end)
@@ -264,10 +293,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Env, Nothing, Int] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'URIO[Env, Int]',
       })
     end)
@@ -276,10 +307,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Env, Throwable, Int] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'RIO[Env, Int]',
       })
     end)
@@ -288,7 +321,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def foo: ZIO[Env, AppError, Int] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_type)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -301,11 +334,13 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def layer: ZLayer[Any, Nothing, UserService] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zlayer_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zlayer_type)
 
       -- ZLayer[Any, Nothing, A] matches 3 aliases: ULayer, Layer[Nothing, _], URLayer[Any, _]
-      assert.is_true(#ready >= 1)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.is_true(#results >= 1)
+      H.assert_result(results[1], {
         replacement = 'ULayer[UserService]',
       })
     end)
@@ -314,11 +349,13 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[def layer: ZLayer[Any, Throwable, UserService] = ???]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zlayer_type)
+      local ready, pending = H.run_handler(bufnr, root, queries.zlayer_type)
 
       -- ZLayer[Any, Throwable, A] matches 3 aliases: TaskLayer, Layer[Throwable, _], RLayer[Any, _]
-      assert.is_true(#ready >= 1)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.is_true(#results >= 1)
+      H.assert_result(results[1], {
         replacement = 'TaskLayer[UserService]',
       })
     end)
@@ -334,9 +371,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_none)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.none',
         title = 'ZIO: replace ZIO.succeed(None) with ZIO.none',
       })
@@ -348,9 +387,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_none)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.none',
         title = 'ZIO: replace ZIO.succeed(none) with ZIO.none',
       })
@@ -360,7 +401,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(Some(42))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_none)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_none)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -375,9 +416,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_some)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.some(42)',
       })
     end)
@@ -386,10 +429,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(Option(value))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_some)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_some)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.some(value)',
       })
     end)
@@ -398,10 +443,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(1.some)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_some)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_some)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.some(1)',
       })
     end)
@@ -417,9 +464,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_either)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.left(err)',
       })
     end)
@@ -428,10 +477,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(Right(ok))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_either)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_either)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.right(ok)',
       })
     end)
@@ -440,10 +491,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(err.asLeft)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_either)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_either)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.left(err)',
       })
     end)
@@ -452,10 +505,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.succeed(ok.asRight)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_either)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_either)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.right(ok)',
       })
     end)
@@ -471,9 +526,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.delay)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = '.delay(5.seconds)',
         title = 'ZIO: replace ZIO.sleep(5.seconds) *> effect with effect.delay(5.seconds)',
       })
@@ -483,10 +540,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val result = ZIO.sleep(Duration.fromMillis(100)) *> otherZIO]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+      local ready, pending = H.run_handler(bufnr, root, queries.delay)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = '.delay(Duration.fromMillis(100))',
       })
     end)
@@ -495,7 +554,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.sleep(5.seconds)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+      local ready, pending = H.run_handler(bufnr, root, queries.delay)
       assert.are.equal(0, #ready)
     end)
 
@@ -503,7 +562,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.sleep(5.seconds) >> effect]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+      local ready, pending = H.run_handler(bufnr, root, queries.delay)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -518,9 +577,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.to_layer)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = '.toLayer',
         title = 'ZIO: replace ZLayer.fromEffect(myEffect) with myEffect.toLayer',
       })
@@ -530,7 +591,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val layer = ZLayer.fromManaged(managed)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.to_layer)
+      local ready, pending = H.run_handler(bufnr, root, queries.to_layer)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -545,9 +606,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.provide_layer)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'effect.provideLayer(layer)',
         title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
       })
@@ -557,10 +620,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = layer.build.use(effect.provideLayer)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.provide_layer)
+      local ready, pending = H.run_handler(bufnr, root, queries.provide_layer)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'effect.provideLayer(layer)',
       })
     end)
@@ -569,7 +634,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.provideLayer(layer)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.provide_layer)
+      local ready, pending = H.run_handler(bufnr, root, queries.provide_layer)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -584,9 +649,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_service)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.service',
       })
     end)
@@ -595,7 +662,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val svc = ZIO.access(_.get)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_service)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_service)
       assert.are.equal(0, #ready)
     end)
 
@@ -603,7 +670,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val svc = ZIO.access(_.foo)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_service)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_service)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -618,9 +685,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.exit_code_map)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'exitCode',
         title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
       })
@@ -630,7 +699,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(_ => ExitCode.failure)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_map)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_map)
       assert.are.equal(0, #ready)
     end)
 
@@ -638,7 +707,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(x => x * 2)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_map)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_map)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -653,9 +722,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.exit_code_as)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'exitCode',
         title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
       })
@@ -665,7 +736,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.as(ExitCode.failure)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_as)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_as)
       assert.are.equal(0, #ready)
     end)
 
@@ -673,7 +744,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.as(42)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_as)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_as)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -688,9 +759,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.exit_code_fold)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'exitCode',
         title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
       })
@@ -700,7 +773,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.fold(_ => ExitCode.success, _ => ExitCode.failure)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_fold)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_fold)
       assert.are.equal(0, #ready)
     end)
 
@@ -708,7 +781,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.fold(_ => left, _ => right)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.exit_code_fold)
+      local ready, pending = H.run_handler(bufnr, root, queries.exit_code_fold)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -723,9 +796,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.tap)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tap(v => sideEffect(v))',
         title = 'ZIO: replace .map returning its parameter with .tap',
       })
@@ -735,9 +810,11 @@ describe('ZIO pure queries (no LSP)', function()
       local source = "val x = effect.map { v =>\n  sideEffect(v)\n  v\n}"
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tap(v => sideEffect(v))',
       })
     end)
@@ -746,9 +823,11 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(v => { log(v); notify(v); v })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tap(v => log(v); notify(v))',
       })
     end)
@@ -757,7 +836,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(v => v * 2)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
       assert.are.equal(0, #ready)
     end)
 
@@ -765,7 +844,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(_ => sideEffect())]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
       assert.are.equal(0, #ready)
     end)
 
@@ -773,7 +852,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(v => { sideEffect(v); otherVal })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
       assert.are.equal(0, #ready)
     end)
 
@@ -781,7 +860,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.mapError(e => { logError(e); e })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -796,9 +875,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tapError(e => logError(e))',
         title = 'ZIO: replace .mapError returning its parameter with .tapError',
       })
@@ -808,9 +889,11 @@ describe('ZIO pure queries (no LSP)', function()
       local source = "val x = effect.mapError { e =>\n  logError(e)\n  e\n}"
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tapError(e => logError(e))',
       })
     end)
@@ -819,7 +902,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.mapError(e => newError)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
       assert.are.equal(0, #ready)
     end)
 
@@ -827,7 +910,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(v => { sideEffect(v); v })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
       assert.are.equal(0, #ready)
     end)
 
@@ -835,7 +918,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.mapError(e => { logError(e); newErr })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_error)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -850,9 +933,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.tap_both)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tapBoth(e => logError(e), v => log(v))',
       })
     end)
@@ -861,10 +946,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.mapError(e => { logError(e); e }).map(v => { log(v); v })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_both)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_both)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'tapBoth(e => logError(e), v => log(v))',
       })
     end)
@@ -873,7 +960,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.map(v => v * 2).mapError(e => { logError(e); e })]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.tap_both)
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_both)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -888,9 +975,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.zio_cond)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'ZIO.fail("fail").unless(check)',
       })
     end)
@@ -899,7 +988,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = ZIO.cond(check, 1, "fail")]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zio_cond)
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_cond)
       assert.are.equal(0, #ready)
     end)
   end)
@@ -914,9 +1003,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.when)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'effect.when(check)',
       })
     end)
@@ -925,10 +1016,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (cond) { succeed } else ZIO.unit]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.when(cond)',
       })
     end)
@@ -937,10 +1030,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (!cond) ZIO.unit else succeed]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.when(cond)',
       })
     end)
@@ -949,7 +1044,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (check) effect else other]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
       assert.are.equal(0, #ready)
     end)
 
@@ -957,7 +1052,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = effect.when(check)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
       assert.are.equal(0, #ready)
     end)
 
@@ -965,10 +1060,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if check then succeed else ZIO.unit]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.when(check)',
       })
     end)
@@ -977,10 +1074,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if !cond then ZIO.unit else succeed]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.when)
+      local ready, pending = H.run_handler(bufnr, root, queries.when)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.when(cond)',
       })
     end)
@@ -996,9 +1095,11 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, pending = H.run_handler(bufnr, root, queries.unless)
 
-      assert.are.equal(0, #pending)
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'effect.unless(check)',
       })
     end)
@@ -1007,10 +1108,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (!(check)) effect else ZIO.unit]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'effect.unless(check)',
       })
     end)
@@ -1019,10 +1122,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (cond) ZIO.unit else succeed]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.unless(cond)',
       })
     end)
@@ -1031,10 +1136,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (cond) ZIO.unit else { succeed }]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.unless(cond)',
       })
     end)
@@ -1043,7 +1150,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (check) effect else ZIO.unit]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
       assert.are.equal(0, #ready)
     end)
 
@@ -1051,7 +1158,7 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if (!check) effect else other]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
       assert.are.equal(0, #ready)
     end)
 
@@ -1059,10 +1166,12 @@ describe('ZIO pure queries (no LSP)', function()
       local source = [[val x = if cond then ZIO.unit else succeed]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+      local ready, pending = H.run_handler(bufnr, root, queries.unless)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
         replacement = 'succeed.unless(cond)',
       })
     end)

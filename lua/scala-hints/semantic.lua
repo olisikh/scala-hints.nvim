@@ -146,8 +146,14 @@ local function pump(bufnr)
 
       -- no retry hook: hover misses are logged only
 
+      -- When hover failed (cache_ok == false) and fallback is set, use fallback
+      local effective_value = value
+      if cache_ok == false and job.fallback ~= nil then
+        effective_value = job.fallback
+      end
+
       for _, cb in ipairs(job.callbacks) do
-        pcall(cb, value)
+        pcall(cb, effective_value)
       end
 
       pump(bufnr)
@@ -255,13 +261,16 @@ end
 ---@param node TSNode|nil node to hover on
 ---@param predicate fun(value: string): boolean predicate to match against hover contents
 ---@param cb fun(result: boolean) callback with the predicate result
-function M.hover_predicate(bufnr, node, predicate, cb)
+---@param opts table|nil optional settings
+---  - fallback: boolean|nil value to use when hover fails (timeout, error, no Metals)
+function M.hover_predicate(bufnr, node, predicate, cb, opts)
+  local fallback = opts and opts.fallback
   if not node then
-    cb(false)
+    cb(fallback ~= nil and fallback or false)
     return
   end
   if not vim.api.nvim_buf_is_valid(bufnr) then
-    cb(false)
+    cb(fallback ~= nil and fallback or false)
     return
   end
 
@@ -308,7 +317,7 @@ function M.hover_predicate(bufnr, node, predicate, cb)
       string.format('hover skipped: no Metals client for %s:%d:%d:%d:%d', 'textDocument/hover', sr, sc, er, ec),
       { bufnr = bufnr }
     )
-    cb(false)
+    cb(fallback ~= nil and fallback or false)
     return
   end
 
@@ -327,6 +336,7 @@ function M.hover_predicate(bufnr, node, predicate, cb)
     end,
     callbacks = { cb },
     timeouts = settings.hover_timeouts_ms,
+    fallback = fallback,
     sr = sr,
     sc = sc,
     er = er,

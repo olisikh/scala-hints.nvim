@@ -29,6 +29,21 @@ local function is_zio_type(hover_value)
     or string.find(hover_value, 'object ZIO') ~= nil
 end
 
+--- Robust ZLayer type detection: checks for ZLayer type patterns in hover response
+local function is_zlayer_type(hover_value)
+  if not hover_value or type(hover_value) ~= 'string' then
+    return false
+  end
+  return string.find(hover_value, 'ZLayer%[') ~= nil
+    or string.find(hover_value, 'ULayer%[') ~= nil
+    or string.find(hover_value, 'TaskLayer%[') ~= nil
+    or string.find(hover_value, 'URLayer%[') ~= nil
+    or string.find(hover_value, 'RLayer%[') ~= nil
+    or string.find(hover_value, 'Layer%[') ~= nil
+    or string.find(hover_value, ': ZLayer') ~= nil
+    or string.find(hover_value, 'object ZLayer') ~= nil
+end
+
 local function parse_query(query)
   return ts.query.parse('scala', query)
 end
@@ -108,7 +123,7 @@ return {
               else
                 done(nil)
               end
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -130,6 +145,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local exception = matches[4][1]
       local finish = matches[5][1]
@@ -139,12 +155,25 @@ return {
 
       local exception_text = utils.get_node_text(bufnr, exception)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.die(' .. exception_text .. ')',
+        title = 'ZIO: replace ZIO.fail(' .. exception_text .. ').orDie with ZIO.die(' .. exception_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.die(' .. exception_text .. ')',
-          title = 'ZIO: replace ZIO.fail(' .. exception_text .. ').orDie with ZIO.die(' .. exception_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -191,7 +220,7 @@ return {
               else
                 done(nil)
               end
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -211,6 +240,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -219,12 +249,25 @@ return {
 
       local replaced = utils.get_node_text(bufnr, finish)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.unit',
+        title = 'ZIO: replace *> ' .. replaced .. ' with .unit',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.unit',
-          title = 'ZIO: replace *> ' .. replaced .. ' with .unit',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -242,18 +285,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'unit',
+        title = 'ZIO: replace .as(()) with .unit',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'unit',
-          title = 'ZIO: replace .as(()) with .unit',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -275,6 +332,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[5][1]
       local value = matches[6][1]
@@ -286,12 +344,25 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.as(' .. value_text .. ')',
+        title = 'ZIO: replace *> ZIO.succeed(' .. value_text .. ') with .as(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.as(' .. value_text .. ')',
-          title = 'ZIO: replace *> ZIO.succeed(' .. value_text .. ') with .as(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -335,7 +406,7 @@ return {
                 replacement = ' *> ' .. value_text,
                 title = 'ZIO: replace .zipRight(' .. value_text .. ') with *> ' .. value_text,
               })
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -394,7 +465,7 @@ return {
                 replacement = '.zipLeft(' .. value_text .. ')',
                 title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with .zipLeft(' .. value_text .. ')',
               }))
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -452,7 +523,7 @@ return {
                 replacement = '.zipRight(' .. value_text .. ')',
                 title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with .zipRight(' .. value_text .. ')',
               }))
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -501,7 +572,7 @@ return {
                 replacement = 'as(' .. value_text .. ')',
                 title = 'ZIO: replace .map(_ => ' .. value_text .. ') with .as(' .. value_text .. ')',
               })
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -553,7 +624,7 @@ return {
                 replacement = 'ignore',
                 title = 'ZIO: replace .catchAll(_ => ' .. value_text .. ') with .ignore',
               })
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -580,6 +651,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local foreach_fun = matches[2][1]
       local collection = matches[4][1]
@@ -600,12 +672,25 @@ return {
         replacement = 'foreachPar'
       end
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.' .. replacement .. '(' .. collection_text .. ')' .. value_text,
+        title = 'ZIO: replace ZIO.' .. foreach_text .. ' with ZIO.' .. replacement,
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.' .. replacement .. '(' .. collection_text .. ')' .. value_text,
-          title = 'ZIO: replace ZIO.' .. foreach_text .. ' with ZIO.' .. replacement,
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -626,6 +711,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local collection = matches[4][1]
       local fn_arg = matches[7][1]
@@ -637,12 +723,25 @@ return {
       local collection_text = utils.get_node_text(bufnr, collection)
       local fn_text = utils.get_node_text(bufnr, fn_arg)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.foreachParN(n)(' .. collection_text .. ')(' .. fn_text .. ')',
+        title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.foreachParN(n)(' .. collection_text .. ')(' .. fn_text .. ')',
-          title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -665,18 +764,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ignore',
+        title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ignore',
-          title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -724,7 +837,7 @@ return {
                 replacement = 'orElseFail(' .. value_text .. ')',
                 title = 'ZIO: replace .mapError(_ => ' .. value_text .. ') with .orElseFail(' .. value_text .. ')',
               })
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -776,7 +889,7 @@ return {
                 replacement = 'orElseFail(' .. value_text .. ')',
                 title = 'ZIO: replace .orElse(ZIO.fail(' .. value_text .. ')) with .orElseFail(' .. value_text .. ')',
               })
-            end)
+            end, { fallback = true })
           end,
         },
       }
@@ -803,6 +916,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[4][1]
       local finish = matches[5][1]
@@ -812,16 +926,29 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'orElseFail(' .. value_text .. ')',
+        title = 'ZIO: replace .flatMapError(_ => ZIO.succeed('
+          .. value_text
+          .. ')) with .orElseFail('
+          .. value_text
+          .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'orElseFail(' .. value_text .. ')',
-          title = 'ZIO: replace .flatMapError(_ => ZIO.succeed('
-            .. value_text
-            .. ')) with .orElseFail('
-            .. value_text
-            .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -845,6 +972,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -878,7 +1006,26 @@ return {
         end
       end
 
-      return results
+      if #results == 0 then
+        return {}
+      end
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                for _, item in ipairs(results) do
+                  done(item)
+                end
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
+        },
+      }
     end,
   },
 
@@ -900,6 +1047,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -933,7 +1081,26 @@ return {
         end
       end
 
-      return results
+      if #results == 0 then
+        return {}
+      end
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                for _, item in ipairs(results) do
+                  done(item)
+                end
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
+        },
+      }
     end,
   },
 
@@ -961,6 +1128,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[4][1]
       local finish = matches[9][1]
@@ -970,12 +1138,25 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.none',
+        title = 'ZIO: replace ZIO.succeed(' .. value_text .. ') with ZIO.none',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.none',
-          title = 'ZIO: replace ZIO.succeed(' .. value_text .. ') with ZIO.none',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1005,6 +1186,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[5] and matches[5][1]
       local some_value = matches[6] and matches[6][1]
@@ -1017,12 +1199,25 @@ return {
       local expr_text = utils.get_node_text(bufnr, expr)
       local value_text = value ~= nil and utils.get_node_text(bufnr, value) or utils.get_node_text(bufnr, some_value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.some(' .. value_text .. ')',
+        title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.some(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.some(' .. value_text .. ')',
-          title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.some(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1054,6 +1249,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
 
       local either = matches[4] and matches[4][1]
@@ -1084,12 +1280,25 @@ return {
 
       local expr_text = utils.get_node_text(bufnr, expr)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+        title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.' .. smartc_text .. '(' .. value_text .. ')',
-          title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1111,6 +1320,7 @@ return {
 ) @_8
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local duration = matches[4][1]
       local sleep_expr = matches[5][1]
@@ -1122,12 +1332,25 @@ return {
 
       local duration_text = utils.get_node_text(bufnr, duration)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = '.delay(' .. duration_text .. ')',
+        title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = '.delay(' .. duration_text .. ')',
-          title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1145,6 +1368,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local effect = matches[4][1]
       local finish = matches[5][1]
@@ -1154,12 +1378,25 @@ return {
 
       local effect_text = utils.get_node_text(bufnr, effect)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.toLayer',
+        title = 'ZIO: replace ZLayer.fromEffect(' .. effect_text .. ') with ' .. effect_text .. '.toLayer',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.toLayer',
-          title = 'ZIO: replace ZLayer.fromEffect(' .. effect_text .. ') with ' .. effect_text .. '.toLayer',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1186,6 +1423,7 @@ return {
 ) @_9
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local layer = matches[1][1]
       local effect = matches[6][1]
       local start = matches[9][1]
@@ -1195,12 +1433,25 @@ return {
       local layer_text = utils.get_node_text(bufnr, layer)
       local effect_text = utils.get_node_text(bufnr, effect)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = effect_text .. '.provideLayer(' .. layer_text .. ')',
+        title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = effect_text .. '.provideLayer(' .. layer_text .. ')',
-          title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1221,20 +1472,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
-      -- This pattern is primarily informational - suggests using ZIO.service[A]
-      -- In practice, ZIO.access(identity) is often used to access a service from the environment.
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.service',
+        title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.service',
-          title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1260,18 +1523,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1294,18 +1571,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1338,18 +1629,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[7][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1386,6 +1691,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1412,12 +1718,25 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tap(' .. param_text .. ' => ' .. body_text .. ')'
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace .map returning its parameter with .tap',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace .map returning its parameter with .tap',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1454,6 +1773,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1480,12 +1800,25 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tapError(' .. param_text .. ' => ' .. body_text .. ')'
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace .mapError returning its parameter with .tapError',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace .mapError returning its parameter with .tapError',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1591,6 +1924,7 @@ return {
 ) @_13
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local first_method = matches[2][1]
       local first_param = matches[4][1]
       local first_last = matches[5][1]
@@ -1660,12 +1994,25 @@ return {
 
       local replacement = 'tapBoth(' .. err_side.param .. ' => ' .. err_side.body .. ', ' .. ok_side.param .. ' => ' .. ok_side.body .. ')'
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace map/mapError side-effects with .tapBoth',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace map/mapError side-effects with .tapBoth',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1687,6 +2034,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[3][1]
       local condition = matches[4][1]
       local error_value = matches[6][1]
@@ -1698,12 +2046,25 @@ return {
       local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
       local error_text = utils.get_node_text(bufnr, error_value)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        title = 'ZIO: replace ZIO.cond(' .. condition_text .. ', (), ' .. error_text .. ') with ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
-          title = 'ZIO: replace ZIO.cond(' .. condition_text .. ', (), ' .. error_text .. ') with ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1737,22 +2098,38 @@ return {
 
       local replacement_effect
       local replacement_condition
+      local hover_target
       if alternative_is_unit and not negated_inner then
         replacement_effect = consequence_text
         replacement_condition = condition_text
+        hover_target = consequence
       elseif consequence_is_unit and negated_inner then
         replacement_effect = alternative_text
         replacement_condition = negated_inner
+        hover_target = alternative
       else
         return {}
       end
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. replacement_condition .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. replacement_condition .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,
@@ -1787,22 +2164,38 @@ return {
 
       local replacement_effect
       local replacement_condition
+      local hover_target
       if alternative_is_unit and negated_inner then
         replacement_effect = consequence_text
         replacement_condition = negated_inner
+        hover_target = consequence
       elseif consequence_is_unit and not negated_inner then
         replacement_effect = alternative_text
         replacement_condition = condition_text
+        hover_target = alternative
       else
         return {}
       end
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. replacement_condition .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. replacement_condition .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end, { fallback = true })
+          end,
         },
       }
     end,

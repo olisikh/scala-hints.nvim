@@ -45,7 +45,7 @@
 2. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over queries.
 3. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
 4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua`.
-5. **Verification**: LSP-dependent handlers call `semantic.hover_predicate` to confirm ZIO types via Metals hover.
+5. **Verification**: All handlers call `semantic.hover_predicate` to confirm ZIO/ZLayer types via Metals hover (with `fallback = true` so hints are still emitted when hover is unavailable).
 6. **Result**: Diagnostics feed `vim.diagnostic.set()`; code actions flow through the wrapped LSP handler.
 
 ## 3. Pattern Catalog
@@ -104,13 +104,14 @@
 - **Metals readiness**: Waits for `MetalsReady` / `MetalsInitialized` autocommands before registering diagnostics.
 - **Timeouts**: Diagnostics 30s, code actions 10s, Metals readiness 10s.
 - **Hover caching**: Results cached per buffer tick to avoid redundant LSP calls.
-- **Type checking**: Hover results matched against `is_zio_type` predicate (checks for `ZIO[`, `UIO[`, `IO[`, `Task[`, etc.).
+- **Type checking**: Hover results matched against `is_zio_type` predicate (checks for `ZIO[`, `UIO[`, `IO[`, `Task[`, etc.) or `is_zlayer_type` (checks for `ZLayer[`, `ULayer[`, `TaskLayer[`, etc.).
+- **Fallback**: All 35 handlers use `hover_predicate` with `fallback = true` — when Metals confirms "not ZIO" the hint is suppressed; when hover is unavailable, hints are emitted anyway.
 
 ## 5. Known Limitations
 
 - Patterns match literal names only (`ZIO`); type aliases and renamed imports are not recognized.
 - Some queries are whitespace-sensitive (e.g., `ZIO\n.unit` may not match).
-- Not all handlers verify types via Metals, which can cause false positives on non-ZIO code.
+- All handlers verify types via Metals when available; without Metals, hints are emitted optimistically (may cause false positives on non-ZIO code).
 - Diagnostics may not refresh after undo operations.
 - Performance may degrade on very large files due to lack of incremental parsing.
 
@@ -122,8 +123,8 @@
    - Implement the `handler` function to extract ranges and suggest replacements.
    - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
 3. Register the query name in `lua/scala-hints/libs/zio/init.lua`.
-4. Optionally use `semantic.hover_predicate` for type verification.
-5. Add tests in `tests/zio/pure_queries_spec.lua` (or `lsp_queries_spec.lua` for LSP-dependent patterns).
+4. Use `semantic.hover_predicate` with `{ fallback = true }` for type verification.
+5. Add tests in `tests/zio/pure_queries_spec.lua` (mock hover with `H.mock_hover_predicate(true)`).
 6. Update the pattern catalog above.
 
 ### Treesitter Query Example

@@ -135,7 +135,7 @@ function H.mock_hover_predicate(return_value)
   if _original_hover_predicate == nil then
     _original_hover_predicate = semantic.hover_predicate
   end
-  semantic.hover_predicate = function(_bufnr, _node, _predicate, cb)
+  semantic.hover_predicate = function(_bufnr, _node, _predicate, cb, _opts)
     cb(return_value)
   end
 end
@@ -152,6 +152,22 @@ function H.restore_mocks()
     semantic.hover_predicate = _original_hover_predicate
     _original_hover_predicate = nil
   end
+end
+
+--- Resolve all pending thunks and return the collected results.
+--- Calls each thunk with a done callback that collects non-nil items.
+---@param pending function[] array of pending thunks
+---@return table[] results collected from resolved thunks
+function H.resolve_pending(pending)
+  local results = {}
+  for _, thunk in ipairs(pending) do
+    thunk(function(item)
+      if item ~= nil then
+        table.insert(results, item)
+      end
+    end)
+  end
+  return results
 end
 
 ------------------------------------------------------------------------
