@@ -13,11 +13,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc curl
+
       - name: Install Neovim
         run: |
           curl -LO https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-linux-x86_64.tar.gz
           tar xzf nvim-linux-x86_64.tar.gz
-          sudo install -d /usr/local/bin
           sudo cp -r nvim-linux-x86_64/* /usr/local/
           nvim --version | head -1
 
@@ -31,9 +35,13 @@ jobs:
 
       - name: Install tree-sitter scala parser
         run: |
-          nvim --headless --clean -u tests/minimal_init.lua \
-            -c "TSInstallSync scala" \
-            -c "q"
+          nvim --headless -u tests/minimal_init.lua \
+            -c "TSInstallSync! scala" \
+            -c "qa!"
+          # Verify parser was installed
+          nvim --headless -u tests/minimal_init.lua \
+            -c "lua print('scala parser: ' .. tostring(pcall(vim.treesitter.language.add, 'scala')))" \
+            -c "qa!"
 
       - name: Run tests
         run: make test
