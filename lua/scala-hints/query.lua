@@ -91,6 +91,7 @@ function M.run_query(opts)
 
     -- Wait for all pending thunks to resolve before calling cb.
     -- Each pending thunk MUST call its done(item_or_nil) callback exactly once.
+    -- If item is an array, flatten it into separate results.
     local remaining = #pending
     for _, thunk in ipairs(pending) do
       local ok_thunk, err = pcall(thunk, function(item)

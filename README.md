@@ -84,6 +84,20 @@ Every handler returns a payload that populates both diagnostics and code actions
 
 Call `require('scala-hints').setup()` after loading dependencies. Ensure Metals is configured and attaches to your Scala buffers so the hover requests succeed.
 
+### Configuration
+
+```lua
+require('scala-hints').setup({
+  hover = {
+    timeouts_ms = { 400, 1000, 2000 },
+    log_misses = true,
+  },
+})
+```
+
+- `hover.timeouts_ms`: List of retry timeouts (ms) for Metals hover; each timeout triggers a retry.
+- `hover.log_misses`: When `true`, logs final hover misses to `/tmp/scala-hints/log`.
+
 ## Usage
 
 - Open a Scala file where Metals is ready.

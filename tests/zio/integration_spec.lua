@@ -81,258 +81,19 @@ describe('ZIO diagnostics/actions integration', function()
   end)
 
   ---------------------------------------------------------------------------
-  -- succeed_unit (uses semantic.hover_predicate — async pending pattern)
+  -- succeed_unit, map_unit, zip_left_value, flat_map_value, map_value,
+  -- catch_all_unit, or_else_fail, or_else_fail2 (all use async pending pattern)
   ---------------------------------------------------------------------------
-  describe('succeed_unit (pending pattern)', function()
-    it('produces valid diagnostic when hover confirms ZIO', function()
-      H.mock_hover_predicate(true)
-      bufnr, root = H.parse_scala([[val x = ZIO.succeed(())]])
-      local diags = run_as_diagnostic(bufnr, root, 'succeed_unit', queries.succeed_unit)
-
-      assert.are.equal(1, #diags)
-      assert_diagnostic_shape(diags[1])
-    end)
-
-    it('produces valid action when hover confirms ZIO', function()
-      H.mock_hover_predicate(true)
-      bufnr, root = H.parse_scala([[val x = ZIO.succeed(())]])
-      local actions = run_as_action(bufnr, root, 'succeed_unit', queries.succeed_unit)
-
-      assert.are.equal(1, #actions)
-      assert_action_shape(actions[1])
-      assert.are.equal('unit', actions[1].replacement)
-    end)
-
-    it('produces nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
-      bufnr, root = H.parse_scala([[val x = ZIO.succeed(())]])
-      local diags = run_as_diagnostic(bufnr, root, 'succeed_unit', queries.succeed_unit)
-
-      assert.are.equal(0, #diags)
-    end)
-  end)
-
-  ---------------------------------------------------------------------------
-  -- Pure queries (no LSP mock needed)
-  ---------------------------------------------------------------------------
-  describe('pure queries produce valid diagnostics and actions', function()
-    local pure_cases = {
+  describe('LSP-dependent queries with semantic.hover_predicate', function()
+    local lsp_cases = {
       {
-        name = 'fail_exception_or_die',
-        source = [[val x = ZIO.fail(new Exception("err")).orDie]],
-        query_name = 'fail_exception_or_die',
-        query_def = queries.fail_exception_or_die,
-        expected_count = 1,
-        expected_replacement = 'ZIO.die(new Exception("err"))',
-      },
-      {
-        name = 'zip_right_unit',
-        source = [[val x = effect *> ZIO.unit]],
-        query_name = 'zip_right_unit',
-        query_def = queries.zip_right_unit,
-        expected_count = 1,
-        expected_replacement = '.unit',
-      },
-      {
-        name = 'as_unit',
-        source = [[val x = effect.as(())]],
-        query_name = 'as_unit',
-        query_def = queries.as_unit,
+        name = 'succeed_unit',
+        source = [[val x = ZIO.succeed(())]],
+        query_name = 'succeed_unit',
+        query_def = queries.succeed_unit,
         expected_count = 1,
         expected_replacement = 'unit',
       },
-      {
-        name = 'zip_right_value',
-        source = [[val x = effect *> ZIO.succeed(42)]],
-        query_name = 'zip_right_value',
-        query_def = queries.zip_right_value,
-        expected_count = 1,
-        expected_replacement = '.as(42)',
-      },
-      {
-        name = 'or_else_fail3',
-        source = [[val x = effect.flatMapError(_ => ZIO.succeed(newErr))]],
-        query_name = 'or_else_fail3',
-        query_def = queries.or_else_fail3,
-        expected_count = 1,
-        expected_replacement = 'orElseFail(newErr)',
-      },
-      {
-        name = 'fold_cause_ignore',
-        source = [[val x = effect.foldCause(_ => (), _ => ())]],
-        query_name = 'fold_cause_ignore',
-        query_def = queries.fold_cause_ignore,
-        expected_count = 1,
-        expected_replacement = 'ignore',
-      },
-      {
-        name = 'zio_foreach',
-        source = [[val x = ZIO.collectAll(items.map(process))]],
-        query_name = 'zio_foreach',
-        query_def = queries.zio_foreach,
-        expected_count = 1,
-        expected_replacement = 'ZIO.foreach(items)(process)',
-      },
-      {
-        name = 'zio_none',
-        source = [[val x = ZIO.succeed(None)]],
-        query_name = 'zio_none',
-        query_def = queries.zio_none,
-        expected_count = 1,
-        expected_replacement = 'ZIO.none',
-      },
-      {
-        name = 'zio_some',
-        source = [[val x = ZIO.succeed(Some(42))]],
-        query_name = 'zio_some',
-        query_def = queries.zio_some,
-        expected_count = 1,
-        expected_replacement = 'ZIO.some(42)',
-      },
-      {
-        name = 'zio_either (Left)',
-        source = [[val x = ZIO.succeed(Left(err))]],
-        query_name = 'zio_either',
-        query_def = queries.zio_either,
-        expected_count = 1,
-        expected_replacement = 'ZIO.left(err)',
-      },
-      {
-        name = 'zio_either (Right)',
-        source = [[val x = ZIO.succeed(Right(ok))]],
-        query_name = 'zio_either',
-        query_def = queries.zio_either,
-        expected_count = 1,
-        expected_replacement = 'ZIO.right(ok)',
-      },
-      {
-        name = 'zio_either (asLeft)',
-        source = [[val x = ZIO.succeed(err.asLeft)]],
-        query_name = 'zio_either',
-        query_def = queries.zio_either,
-        expected_count = 1,
-        expected_replacement = 'ZIO.left(err)',
-      },
-      {
-        name = 'zio_either (asRight)',
-        source = [[val x = ZIO.succeed(ok.asRight)]],
-        query_name = 'zio_either',
-        query_def = queries.zio_either,
-        expected_count = 1,
-        expected_replacement = 'ZIO.right(ok)',
-      },
-    }
-
-    for _, tc in ipairs(pure_cases) do
-      it(tc.name .. ' -> diagnostic', function()
-        bufnr, root = H.parse_scala(tc.source)
-        local diags = run_as_diagnostic(bufnr, root, tc.query_name, tc.query_def)
-
-        assert.are.equal(tc.expected_count, #diags, tc.name .. ': wrong diagnostic count')
-        for _, d in ipairs(diags) do
-          assert_diagnostic_shape(d)
-        end
-        if tc.expected_replacement then
-          -- The replacement is in the message title, not directly accessible
-          -- but we can verify it passes through make_diagnostic without error
-          assert.is_truthy(diags[1].message)
-        end
-      end)
-
-      it(tc.name .. ' -> action', function()
-        bufnr, root = H.parse_scala(tc.source)
-        local actions = run_as_action(bufnr, root, tc.query_name, tc.query_def)
-
-        assert.are.equal(tc.expected_count, #actions, tc.name .. ': wrong action count')
-        for _, a in ipairs(actions) do
-          assert_action_shape(a)
-        end
-        if tc.expected_replacement then
-          assert.are.equal(tc.expected_replacement, actions[1].replacement)
-        end
-      end)
-    end
-  end)
-
-  ---------------------------------------------------------------------------
-  -- zio_type produces multiple diagnostics/actions for matching aliases
-  ---------------------------------------------------------------------------
-  describe('zio_type', function()
-    it('produces valid diagnostics for ZIO[Any, Nothing, Int]', function()
-      bufnr, root = H.parse_scala([[def foo: ZIO[Any, Nothing, Int] = ???]])
-      local diags = run_as_diagnostic(bufnr, root, 'zio_type', queries.zio_type)
-
-      -- Should produce 3 matches: UIO, IO, URIO
-      assert.are.equal(3, #diags)
-      for _, d in ipairs(diags) do
-        assert_diagnostic_shape(d)
-      end
-    end)
-
-    it('produces valid actions for ZIO[Any, Nothing, Int]', function()
-      bufnr, root = H.parse_scala([[def foo: ZIO[Any, Nothing, Int] = ???]])
-      local actions = run_as_action(bufnr, root, 'zio_type', queries.zio_type)
-
-      assert.are.equal(3, #actions)
-      local replacements = {}
-      for _, a in ipairs(actions) do
-        assert_action_shape(a)
-        table.insert(replacements, a.replacement)
-      end
-      assert.is_truthy(vim.tbl_contains(replacements, 'UIO[Int]'))
-      assert.is_truthy(vim.tbl_contains(replacements, 'IO[Nothing, Int]'))
-      assert.is_truthy(vim.tbl_contains(replacements, 'URIO[Any, Int]'))
-    end)
-
-    it('produces 1 action for ZIO[Env, Nothing, Int] (URIO only)', function()
-      bufnr, root = H.parse_scala([[def foo: ZIO[Env, Nothing, Int] = ???]])
-      local actions = run_as_action(bufnr, root, 'zio_type', queries.zio_type)
-
-      assert.are.equal(1, #actions)
-      assert.are.equal('URIO[Env, Int]', actions[1].replacement)
-    end)
-
-    it('produces 0 actions for ZIO[Env, AppError, Int]', function()
-      bufnr, root = H.parse_scala([[def foo: ZIO[Env, AppError, Int] = ???]])
-      local actions = run_as_action(bufnr, root, 'zio_type', queries.zio_type)
-
-      assert.are.equal(0, #actions)
-    end)
-  end)
-
-  ---------------------------------------------------------------------------
-  -- zlayer_type
-  ---------------------------------------------------------------------------
-  describe('zlayer_type', function()
-    it('produces valid actions for ZLayer[Any, Nothing, UserService]', function()
-      bufnr, root = H.parse_scala([[def layer: ZLayer[Any, Nothing, UserService] = ???]])
-      local actions = run_as_action(bufnr, root, 'zlayer_type', queries.zlayer_type)
-
-      assert.are.equal(3, #actions)
-      local replacements = {}
-      for _, a in ipairs(actions) do
-        assert_action_shape(a)
-        table.insert(replacements, a.replacement)
-      end
-      assert.is_truthy(vim.tbl_contains(replacements, 'ULayer[UserService]'))
-      assert.is_truthy(vim.tbl_contains(replacements, 'Layer[Nothing, UserService]'))
-      assert.is_truthy(vim.tbl_contains(replacements, 'URLayer[Any, UserService]'))
-    end)
-
-    it('produces 1 action for ZLayer[Any, AppError, Svc] (Layer only)', function()
-      bufnr, root = H.parse_scala([[def layer: ZLayer[Any, AppError, Svc] = ???]])
-      local actions = run_as_action(bufnr, root, 'zlayer_type', queries.zlayer_type)
-
-      assert.are.equal(1, #actions)
-      assert.are.equal('Layer[AppError, Svc]', actions[1].replacement)
-    end)
-  end)
-
-  ---------------------------------------------------------------------------
-  -- LSP-dependent queries produce valid shapes when mocked true
-  ---------------------------------------------------------------------------
-  describe('LSP-dependent queries produce valid diagnostics and actions', function()
-    local lsp_cases = {
       {
         name = 'map_unit',
         source = [[val x = effect.map(_ => ())]],
@@ -391,7 +152,7 @@ describe('ZIO diagnostics/actions integration', function()
 
     for _, tc in ipairs(lsp_cases) do
       it(tc.name .. ' -> diagnostic (hover=true)', function()
-        H.mock_hover_node_and_match(true)
+        H.mock_hover_predicate(true)
         bufnr, root = H.parse_scala(tc.source)
         local diags = run_as_diagnostic(bufnr, root, tc.query_name, tc.query_def)
 
@@ -402,7 +163,7 @@ describe('ZIO diagnostics/actions integration', function()
       end)
 
       it(tc.name .. ' -> action (hover=true)', function()
-        H.mock_hover_node_and_match(true)
+        H.mock_hover_predicate(true)
         bufnr, root = H.parse_scala(tc.source)
         local actions = run_as_action(bufnr, root, tc.query_name, tc.query_def)
 
@@ -416,7 +177,7 @@ describe('ZIO diagnostics/actions integration', function()
       end)
 
       it(tc.name .. ' -> diagnostic (hover=false)', function()
-        H.mock_hover_node_and_match(false)
+        H.mock_hover_predicate(false)
         bufnr, root = H.parse_scala(tc.source)
         local diags = run_as_diagnostic(bufnr, root, tc.query_name, tc.query_def)
 
@@ -424,7 +185,7 @@ describe('ZIO diagnostics/actions integration', function()
       end)
 
       it(tc.name .. ' -> action (hover=false)', function()
-        H.mock_hover_node_and_match(false)
+        H.mock_hover_predicate(false)
         bufnr, root = H.parse_scala(tc.source)
         local actions = run_as_action(bufnr, root, tc.query_name, tc.query_def)
 
@@ -443,7 +204,9 @@ describe('ZIO diagnostics/actions integration', function()
       { name = 'zip_right_value', source = [[val x = effect *> ZIO.succeed(42)]], qd = queries.zip_right_value },
       { name = 'fold_cause_ignore', source = [[val x = effect.foldCause(_ => (), _ => ())]], qd = queries.fold_cause_ignore },
       { name = 'zio_none', source = [[val x = ZIO.succeed(None)]], qd = queries.zio_none },
+      { name = 'zio_none_lower', source = [[val x = ZIO.succeed(none)]], qd = queries.zio_none },
       { name = 'zio_some', source = [[val x = ZIO.succeed(Some(42))]], qd = queries.zio_some },
+      { name = 'zio_some_extension', source = [[val x = ZIO.succeed(1.some)]], qd = queries.zio_some },
     }
 
     for _, tc in ipairs(range_cases) do

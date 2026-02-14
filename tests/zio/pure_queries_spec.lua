@@ -315,6 +315,20 @@ describe('ZIO pure queries (no LSP)', function()
       })
     end)
 
+    it('matches ZIO.succeed(none) and suggests ZIO.none', function()
+      local source = [[val x = ZIO.succeed(none)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_none)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'ZIO.none',
+        title = 'ZIO: replace ZIO.succeed(none) with ZIO.none',
+      })
+    end)
+
     it('does not match ZIO.succeed(Some(v))', function()
       local source = [[val x = ZIO.succeed(Some(42))]]
       bufnr, root = H.parse_scala(source)
@@ -350,6 +364,18 @@ describe('ZIO pure queries (no LSP)', function()
       assert.are.equal(1, #ready)
       H.assert_result(ready[1], {
         replacement = 'ZIO.some(value)',
+      })
+    end)
+
+    it('matches ZIO.succeed(v.some) and suggests ZIO.some(v)', function()
+      local source = [[val x = ZIO.succeed(1.some)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.zio_some)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'ZIO.some(1)',
       })
     end)
   end)

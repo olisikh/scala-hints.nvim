@@ -1,14 +1,17 @@
 local constants = require('scala-hints.constants')
 local client = require('scala-hints.client')
+local semantic = require('scala-hints.semantic')
 local logger = require('scala-hints.logger').new('init')
 
 local M = {}
 
 --- Function to instantiate the plugin
----@param _opts table|nil options (reserved for future use)
+---@param _opts table|nil options
 ---@return table plugin object
 M.setup = function(_opts)
   logger.info('Module initializing')
+
+  semantic.configure(_opts)
 
   -- Listen for Metals attaching to Scala buffers.
   -- When Metals is ready we start (or reuse) our in-process LSP client

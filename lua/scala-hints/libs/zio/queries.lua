@@ -11,8 +11,22 @@ local utils = require('scala-hints.utils')
 local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
-local zio_predicate = function(value)
-  return string.find(value, 'ZIO') ~= nil
+--- Robust ZIO type detection: checks for ZIO type patterns in hover response
+local function is_zio_type(hover_value)
+  if not hover_value or type(hover_value) ~= 'string' then
+    return false
+  end
+  -- Check for ZIO type patterns: ZIO[, UIO[, IO[, etc.
+  return string.find(hover_value, 'ZIO%[') ~= nil
+    or string.find(hover_value, 'UIO%[') ~= nil
+    or string.find(hover_value, 'IO%[') ~= nil
+    or string.find(hover_value, 'URIO%[') ~= nil
+    or string.find(hover_value, 'RIO%[') ~= nil
+    or string.find(hover_value, 'Task%[') ~= nil
+    or string.find(hover_value, 'Managed%[') ~= nil
+    or string.find(hover_value, 'ZStream%[') ~= nil
+    or string.find(hover_value, ': ZIO') ~= nil
+    or string.find(hover_value, 'object ZIO') ~= nil
 end
 
 local function parse_query(query)
@@ -33,6 +47,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -43,14 +58,14 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'unit',
-        title = 'ZIO: replace .map(_ => ()) with .unit',
+        title = 'ZIO: replace ZIO.succeed(()) with ZIO.unit',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, target, zio_predicate, function(is_zio)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -112,26 +127,34 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'unit',
+        title = 'ZIO: replace .map(_ => ()) with .unit',
+      }
 
-      if is_zio then
-        return {
-          {
-            diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-            action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-            replacement = 'unit',
-            title = 'ZIO: replace .map(_ => ()) with .unit',
-          },
-        }
-      else
-        return {}
-      end
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -250,6 +273,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -259,29 +283,35 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      if is_zio then
-        local value_text = utils.get_node_text(bufnr, value)
+              local value_text = utils.get_node_text(bufnr, value)
+              local base_diagnostic = {
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+              }
 
-        local base_diagnostic = {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-        }
-
-        return {
-          utils.deep_merge(base_diagnostic, {
-            replacement = ' <* ' .. value_text,
-            title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with <* ' .. value_text,
-          }),
-          utils.deep_merge(base_diagnostic, {
-            replacement = '.zipLeft(' .. value_text .. ')',
-            title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with .zipLeft(' .. value_text .. ')',
-          }),
-        }
-      else
-        return {}
-      end
+              -- Call done() separately for each result option
+              done(utils.deep_merge(base_diagnostic, {
+                replacement = ' <* ' .. value_text,
+                title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with <* ' .. value_text,
+              }))
+              done(utils.deep_merge(base_diagnostic, {
+                replacement = '.zipLeft(' .. value_text .. ')',
+                title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with .zipLeft(' .. value_text .. ')',
+              }))
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -301,6 +331,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -310,29 +341,35 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      if is_zio then
-        local value_text = utils.get_node_text(bufnr, value)
+              local value_text = utils.get_node_text(bufnr, value)
+              local base_diagnostic = {
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+              }
 
-        local base_diagnostic = {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-        }
-
-        return {
-          utils.deep_merge(base_diagnostic, {
-            replacement = ' *> ' .. value_text,
-            title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with *> ' .. value_text,
-          }),
-          utils.deep_merge(base_diagnostic, {
-            replacement = '.zipRight(' .. value_text .. ')',
-            title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with .zipRight(' .. value_text .. ')',
-          }),
-        }
-      else
-        return {}
-      end
+              -- Call done() separately for each result option
+              done(utils.deep_merge(base_diagnostic, {
+                replacement = ' *> ' .. value_text,
+                title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with *> ' .. value_text,
+              }))
+              done(utils.deep_merge(base_diagnostic, {
+                replacement = '.zipRight(' .. value_text .. ')',
+                title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with .zipRight(' .. value_text .. ')',
+              }))
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -352,6 +389,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -359,22 +397,27 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local value_text = utils.get_node_text(bufnr, value)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
-
-      if is_zio then
-        return {
-          {
-            diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-            action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-            replacement = 'as(' .. value_text .. ')',
-            title = 'ZIO: replace .map(_ => ' .. value_text .. ') with .as(' .. value_text .. ')',
-          },
-        }
-      else
-        return {}
-      end
+              local value_text = utils.get_node_text(bufnr, value)
+              done({
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                replacement = 'as(' .. value_text .. ')',
+                title = 'ZIO: replace .map(_ => ' .. value_text .. ') with .as(' .. value_text .. ')',
+              })
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -383,44 +426,50 @@ return {
     query = parse_query([[
 (call_expression 
   function: (field_expression
-    value: (_)
-    field: (_) @_1 (#eq? @_1 "catchAll")
+    value: (_) @_1
+    field: (_) @_2 (#eq? @_2 "catchAll")
   )
   arguments: (arguments
     (lambda_expression 
       parameters: (wildcard)
       (field_expression
-        value: (identifier) @_2 (#eq? @_2 "ZIO")
-        field: (identifier) @_3 (#eq? @_3 "unit")
-      ) @_4
+        value: (identifier) @_3 (#eq? @_3 "ZIO")
+        field: (identifier) @_4 (#eq? @_4 "unit")
+      ) @_5
      )
-  ) @_5
+  ) @_6
 )
 ]]),
     handler = function(bufnr, matches)
-      local target = matches[1][1]
-      local value = matches[4][1]
-      local finish = matches[5][1]
+      local hover_target = matches[1][1]
+      local target = matches[2][1]
+      local value = matches[5][1]
+      local finish = matches[6][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local value_text = utils.get_node_text(bufnr, value)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
-
-      if is_zio then
-        return {
-          {
-            diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-            action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-            replacement = 'ignore',
-            title = 'ZIO: replace .catchAll(_ => ' .. value_text .. ') with .ignore',
-          },
-        }
-      else
-        return {}
-      end
+              local value_text = utils.get_node_text(bufnr, value)
+              done({
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                replacement = 'ignore',
+                title = 'ZIO: replace .catchAll(_ => ' .. value_text .. ') with .ignore',
+              })
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -523,6 +572,7 @@ return {
 ) @_4
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -530,21 +580,27 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local value_text = utils.get_node_text(bufnr, value)
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      if is_zio then
-        return {
-          {
-            diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-            action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-            replacement = 'orElseFail(' .. value_text .. ')',
-            title = 'ZIO: replace .mapError(_ => ' .. value_text .. ') with .orElseFail(' .. value_text .. ')',
-          },
-        }
-      else
-        return {}
-      end
+              local value_text = utils.get_node_text(bufnr, value)
+              done({
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                replacement = 'orElseFail(' .. value_text .. ')',
+                title = 'ZIO: replace .mapError(_ => ' .. value_text .. ') with .orElseFail(' .. value_text .. ')',
+              })
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -568,6 +624,7 @@ return {
 ) 
 ]]),
     handler = function(bufnr, matches)
+      local hover_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[6][1]
       local finish = matches[7][1]
@@ -575,21 +632,27 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
-      local value_text = utils.get_node_text(bufnr, value)
-      local is_zio = utils.hover_node_and_match(bufnr, target, zio_predicate)
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
 
-      if is_zio then
-        return {
-          {
-            diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-            action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-            replacement = 'orElseFail(' .. value_text .. ')',
-            title = 'ZIO: replace .orElse(ZIO.fail(' .. value_text .. ')) with .orElseFail(' .. value_text .. ')',
-          },
-        }
-      else
-        return {}
-      end
+              local value_text = utils.get_node_text(bufnr, value)
+              done({
+                diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                replacement = 'orElseFail(' .. value_text .. ')',
+                title = 'ZIO: replace .orElse(ZIO.fail(' .. value_text .. ')) with .orElseFail(' .. value_text .. ')',
+              })
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -758,22 +821,22 @@ return {
   ) @_3
   arguments: (arguments
     [
-      ((identifier) @_4 (#eq? @_4 "None"))
+      ((identifier) @_4 (#any-of? @_4 "None" "none"))
       ((generic_function
         function: (field_expression
           value: (identifier) @_5 (#eq? @_5 "Option")
           field: (identifier) @_6 (#eq? @_6 "empty")
         ) @_7
         type_arguments: (type_arguments (type_identifier) @_8)
-      ))
-    ] @_9
-  ) @_10
+      ) @_4)
+    ]
+  ) @_9
 )
 ]]),
     handler = function(bufnr, matches)
       local start = matches[3][1]
-      local value = matches[9][1]
-      local finish = matches[10][1]
+      local value = matches[4][1]
+      local finish = matches[9][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -801,24 +864,31 @@ return {
     field: (identifier) @_2 (#eq? @_2 "succeed")
   ) @_3
   arguments: (arguments
-    (call_expression
-      function: (identifier) @_4 (#any-of? @_4 "Some" "Option")
-      arguments: (arguments (_) @_5)
-    ) @_6
-  ) @_7
+    [
+      (call_expression
+        function: (identifier) @_4 (#any-of? @_4 "Some" "Option")
+        arguments: (arguments (_) @_5)
+      )
+      (field_expression
+        value: (_) @_6
+        field: (identifier) @_7 (#eq? @_7 "some")
+      )
+    ] @_8
+  ) @_9
 )
 ]]),
     handler = function(bufnr, matches)
       local start = matches[3][1]
-      local value = matches[5][1]
-      local expr = matches[6][1]
-      local finish = matches[7][1]
+      local value = matches[5] and matches[5][1]
+      local some_value = matches[6] and matches[6][1]
+      local expr = matches[8][1]
+      local finish = matches[9][1]
 
       local dstart_row, dstart_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
       local expr_text = utils.get_node_text(bufnr, expr)
-      local value_text = utils.get_node_text(bufnr, value)
+      local value_text = value ~= nil and utils.get_node_text(bufnr, value) or utils.get_node_text(bufnr, some_value)
 
       return {
         {

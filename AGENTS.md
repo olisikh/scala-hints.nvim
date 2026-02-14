@@ -58,7 +58,7 @@ The core logic resides in the interaction between `diagnostics`/`actions` and `q
 3. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over the query list for the requested range or file scope.
 4. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
 5. **Handling**: For each match, the specific handler in `query.lua` is invoked.
-6. **Verification**: Handlers may use `utils.hover_node_and_match` to verify types via Metals LSP.
+6. **Verification**: LSP-dependent handlers use `semantic.hover_predicate` to verify types via Metals hover.
 7. **Result**: Diagnostics feed `vim.diagnostic.set()` while code-action payloads flow through the wrapped `vim.lsp.handlers['textDocument/codeAction']`.
 
 ### ASCII Query Handler Diagram
@@ -100,8 +100,8 @@ The following table lists the patterns currently defined in `query.lua`.
 | `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` | Implemented |
 | `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` (and others) | Implemented |
 | `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` (and others) | Implemented |
-| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` | Implemented |
-| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` | Implemented |
+| `zio_none` | `ZIO.succeed(None)` / `ZIO.succeed(none)` / `ZIO.succeed(Option.empty[A])` | `ZIO.none` | Implemented |
+| `zio_some` | `ZIO.succeed(Some(v))` / `ZIO.succeed(Option(v))` / `ZIO.succeed(v.some)` | `ZIO.some(v)` | Implemented |
 | `zio_either` | `ZIO.succeed(Left(v))` | `ZIO.left(v)` | Implemented |
 | `exit_code` | `.map(_ => ExitCode.success)` | `.exitCode` | **Placeholder** |
 | `exit_code2` | `.as(ExitCode.success)` | `.exitCode` | **Placeholder** |
@@ -110,22 +110,25 @@ The following table lists the patterns currently defined in `query.lua`.
 
 ## 6. Technical Details
 - **Treesitter Query Syntax**: Uses S-expressions for AST matching. Handlers often use `#eq?` and `#any-of?` predicates.
-- **Async Handling**: Utilizes `plenary.async` for non-blocking LSP requests and query execution.
+- **Async Handling**: Utilizes `plenary.async` for non-blocking query execution; LSP hover checks run through `semantic.hover_predicate`.
 - **Metals Readiness**: The plugin waits for Metals to emit the `User MetalsReady` / `MetalsInitialized` events before registering diagnostics/code actions.
 - **Timeouts**:
     - Diagnostics collection: 30 seconds.
     - Metals readiness check: 10 seconds.
     - Code action resolution: 10 seconds.
-- **Type Checking**: `utils.hover_node_and_match` performs a `textDocument/hover` request to Metals and matches the returned type string against a predicate (e.g., checking for "ZIO").
+- **Hover Retries**: `semantic.hover_predicate` retries hover with backoff (default 400/1000/2000 ms) and logs final misses.
+- **Setup Configuration**: `setup({ hover = { timeouts_ms = {...}, log_misses = true } })` controls hover retries and logging.
+- **Type Checking**: Hover results are matched against `is_zio_type` predicates.
 
 ## 7. Current Issues & Limitations
 - **Metals Initialization**: Reliably waiting for Metals to be fully ready (including indexing) is still a challenge.
 - **Diagnostics Refresh**: Diagnostics sometimes fail to rebuild after an "undo" operation or certain code actions.
 - **Whitespace Sensitivity**: Some Treesitter queries are sensitive to specific formatting (e.g., newlines between `ZIO` and `.unit`).
 - **No Alias Support**: Patterns only match literal names (e.g., `ZIO`); they do not recognize type aliases or renamed imports.
-- **No Caching**: Every diagnostic request re-runs all queries, which may impact performance on very large files.
+- **Partial Caching**: Hover results are cached per buffer tick, but diagnostics still re-run all queries.
 - **Inconsistent Type Checking**: Not all patterns currently verify the underlying type via Metals, leading to potential false positives on non-ZIO code.
-- **Test Coverage**: There are currently **zero** automated tests.
+- **Reliability**: Hover timeouts can still cause missed hints when Metals is under heavy load, even with retries.
+- **Tests**: Automated test suites exist for the query engine, registry, pure queries, LSP queries, and integration flows.
 
 ## 8. TODOs from User
 The following items are tracked for future implementation (from `TODO.md`):
@@ -157,7 +160,7 @@ To add a new pattern to the plugin:
     - Write the Treesitter S-expression.
     - Implement the `handler` function to extract ranges and suggest replacements.
 3. **Register the Query**: Add the query name to the `query_names` list in both `lua/scala-hints/diagnostics.lua` and `lua/scala-hints/actions.lua`.
-4. **Implement Type Verification (Optional)**: Use `utils.hover_node_and_match` if the pattern should only apply to specific types (e.g., `ZIO`).
+4. **Implement Type Verification (Optional)**: Use `semantic.hover_predicate` if the pattern should only apply to specific types (e.g., `ZIO`).
 5. **Manual Verification**: Open a Scala file and verify that the diagnostic appears and the code action works as expected.
 6. **Update Documentation**: Add the new pattern to the Pattern Catalog in `AGENTS.md`.
 
@@ -166,7 +169,7 @@ To add a new pattern to the plugin:
 - **Core Logic (`query.lua`)**: 1135 lines
 - **Number of Modules**: 6
 - **Total Patterns**: 24 (20 implemented, 4 placeholders)
-- **Test Coverage**: 0%
+- **Test Coverage**: Present (see `tests/` for query engine, registry, and ZIO integration/LSP specs).
 
 ## 12. Known Limitations
 - Relies on Metals and Neovim APIs; changes to either stack may require adjustments.
@@ -186,7 +189,7 @@ Example of a simple match for `ZIO.succeed(())`:
 ```
 
 ## 14. Appendix B: LSP Interaction Details
-The plugin uses `vim.lsp.buf_request` with the `textDocument/hover` method. The response is parsed to find type information, which is then matched against predicates defined in `query.lua`.
+The plugin uses `vim.lsp.buf_request` with the `textDocument/hover` method via `semantic.hover_predicate`. Hover requests are retried with backoff, and the response is parsed to find type information matched against predicates defined in `query.lua`.
 
 ## 15. Appendix C: External References
 - [ZIO Documentation](https://zio.dev/)

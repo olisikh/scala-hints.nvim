@@ -1,5 +1,6 @@
 local ts = vim.treesitter
 local async = require('plenary.async')
+local logger = require('scala-hints.logger').new('utils')
 
 local M = {}
 
@@ -72,7 +73,7 @@ M.hover_node_and_match = function(bufnr, node, predicate)
   local p_start_row, p_start_col, p_end_row, p_end_col = node:range()
   local start_pos = { p_start_row, p_start_col }
   local end_pos = { p_end_row, p_end_col }
-  local params = vim.lsp.util.make_given_range_params(start_pos, end_pos, bufnr)
+  local params = vim.lsp.util.make_given_range_params(start_pos, end_pos, bufnr, 'utf-16')
 
   local tx, rx = async.control.channel.oneshot()
 
@@ -81,6 +82,8 @@ M.hover_node_and_match = function(bufnr, node, predicate)
       vim.notify(string.format('Request textDocument/hover to Metals LSP server has failed: %s', err))
       return false
     end
+
+    logger.info('Response from metals hover: ' .. tostring(hover_value))
 
     local is_zio = result ~= nil
       and result.contents ~= nil

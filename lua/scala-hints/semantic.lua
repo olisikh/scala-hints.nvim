@@ -1,4 +1,29 @@
 local M = {}
+local logger = require('scala-hints.logger').new('semantic')
+
+local settings = {
+  hover_timeouts_ms = { 400, 1000, 2000 },
+  log_misses = true,
+}
+
+local function normalize_timeouts(value)
+  if type(value) ~= 'table' then
+    return nil
+  end
+
+  local out = {}
+  for _, item in ipairs(value) do
+    if type(item) == 'number' and item > 0 then
+      table.insert(out, item)
+    end
+  end
+
+  if #out == 0 then
+    return nil
+  end
+
+  return out
+end
 
 -- per-buffer state
 local state = {}
@@ -24,7 +49,7 @@ end
 
 -- Tune these:
 local MAX_INFLIGHT = 4
-local TIMEOUT_MS = 400
+local HOVER_TIMEOUTS_MS = settings.hover_timeouts_ms
 
 local function pump(bufnr)
   local s = buf_state(bufnr)
@@ -61,29 +86,63 @@ local function pump(bufnr)
       pump(bufnr)
     end
 
-    -- Guard: first responder (timeout or LSP) wins; the other is ignored
-    local resolved = false
-    vim.defer_fn(function()
-      if resolved then
-        return
-      end
-      resolved = true
-      done(false)
-    end, TIMEOUT_MS)
-
-    vim.lsp.buf_request(bufnr, job.method, job.params, function(err, result)
-      if resolved then
-        return
-      end
-      resolved = true
-
-      if err ~= nil then
-        done(false)
+    local function log_miss(reason)
+      if not settings.log_misses then
         return
       end
 
-      done(job.eval(result))
-    end)
+      logger.warn(string.format(
+        'hover miss (%s) for %s:%d:%d:%d:%d after %d attempt(s)',
+        reason,
+        job.method,
+        job.sr,
+        job.sc,
+        job.er,
+        job.ec,
+        #job.timeouts
+      ))
+    end
+
+    local function run_attempt(idx)
+      -- Guard: first responder (timeout or LSP) wins; the other is ignored
+      local resolved = false
+      local timeout_ms = job.timeouts[idx]
+
+      vim.defer_fn(function()
+        if resolved then
+          return
+        end
+        resolved = true
+
+        if idx < #job.timeouts then
+          run_attempt(idx + 1)
+        else
+          log_miss('timeout')
+          done(false)
+        end
+      end, timeout_ms)
+
+      vim.lsp.buf_request(bufnr, job.method, job.params, function(err, result)
+        if resolved then
+          return
+        end
+        resolved = true
+
+        if err ~= nil then
+          if idx < #job.timeouts then
+            run_attempt(idx + 1)
+          else
+            log_miss(tostring(err))
+            done(false)
+          end
+          return
+        end
+
+        done(job.eval(result))
+      end)
+    end
+
+    run_attempt(1)
   end
 end
 
@@ -122,7 +181,7 @@ function M.hover_predicate(bufnr, node, predicate, cb)
     return
   end
 
-  local params = vim.lsp.util.make_given_range_params({ sr, sc }, { er, ec }, bufnr)
+  local params = vim.lsp.util.make_given_range_params({ sr, sc }, { er, ec }, bufnr, 'utf-16')
 
   local job = {
     key = key,
@@ -130,6 +189,11 @@ function M.hover_predicate(bufnr, node, predicate, cb)
     method = 'textDocument/hover',
     params = params,
     callbacks = { cb },
+    timeouts = HOVER_TIMEOUTS_MS,
+    sr = sr,
+    sc = sc,
+    er = er,
+    ec = ec,
     eval = function(result)
       return result ~= nil
         and result.contents ~= nil
@@ -146,6 +210,32 @@ end
 ---@param bufnr integer buffer number
 function M.reset(bufnr)
   state[bufnr] = nil
+end
+
+--- Configure semantic hover behavior.
+---@param opts table|nil
+---  - hover: table
+---    - timeouts_ms: number[]
+---    - log_misses: boolean
+function M.configure(opts)
+  if type(opts) ~= 'table' then
+    return
+  end
+
+  local hover = opts.hover
+  if type(hover) ~= 'table' then
+    return
+  end
+
+  local timeouts = normalize_timeouts(hover.timeouts_ms)
+  if timeouts then
+    settings.hover_timeouts_ms = timeouts
+    HOVER_TIMEOUTS_MS = settings.hover_timeouts_ms
+  end
+
+  if type(hover.log_misses) == 'boolean' then
+    settings.log_misses = hover.log_misses
+  end
 end
 
 return M

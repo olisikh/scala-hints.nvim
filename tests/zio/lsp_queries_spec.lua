@@ -20,7 +20,7 @@ describe('ZIO queries with LSP hover mock', function()
   end)
 
   ---------------------------------------------------------------------------
-  -- succeed_unit (uses semantic.hover_predicate — async/pending)
+  -- succeed_unit (now uses semantic.hover_predicate — async/pending)
   ---------------------------------------------------------------------------
   describe('succeed_unit', function()
     it('returns a pending thunk that resolves when hover confirms ZIO', function()
@@ -65,197 +65,302 @@ describe('ZIO queries with LSP hover mock', function()
   end)
 
   ---------------------------------------------------------------------------
-  -- map_unit (uses utils.hover_node_and_match)
+  -- map_unit (uses semantic.hover_predicate)
   ---------------------------------------------------------------------------
   describe('map_unit', function()
     it('matches .map(_ => ()) with ZIO hover and suggests .unit', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.map(_ => ())]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.map_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.map_unit)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
         replacement = 'unit',
         title = 'ZIO: replace .map(_ => ()) with .unit',
       })
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.map(_ => ())]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.map_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.map_unit)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- zip_left_value (uses utils.hover_node_and_match, returns 2 actions)
+  -- zip_left_value (uses semantic.hover_predicate, returns 2 actions)
   ---------------------------------------------------------------------------
   describe('zip_left_value', function()
     it('matches .tap(_ => v) and suggests two replacements', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.tap(_ => sideEffect)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zip_left_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.zip_left_value)
 
-      assert.are.equal(2, #ready)
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(2, #published)
 
       -- First option: <* v
-      assert.is_truthy(string.find(ready[1].replacement, '<*'))
+      assert.is_truthy(string.find(published[1].replacement, '<*'))
 
       -- Second option: .zipLeft(v)
-      assert.is_truthy(string.find(ready[2].replacement, 'zipLeft'))
+      assert.is_truthy(string.find(published[2].replacement, 'zipLeft'))
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.tap(_ => sideEffect)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.zip_left_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.zip_left_value)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- flat_map_value (uses utils.hover_node_and_match, returns 2 actions)
+  -- flat_map_value (uses semantic.hover_predicate, returns 2 actions)
   ---------------------------------------------------------------------------
   describe('flat_map_value', function()
     it('matches .flatMap(_ => v) and suggests two replacements', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.flatMap(_ => otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.flat_map_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.flat_map_value)
 
-      assert.are.equal(2, #ready)
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(2, #published)
 
       -- First option: *> v
-      assert.is_truthy(string.find(ready[1].replacement, '*>'))
+      assert.is_truthy(string.find(published[1].replacement, '*>'))
       -- Second option: .zipRight(v)
-      assert.is_truthy(string.find(ready[2].replacement, 'zipRight'))
+      assert.is_truthy(string.find(published[2].replacement, 'zipRight'))
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.flatMap(_ => otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.flat_map_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.flat_map_value)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- map_value (uses utils.hover_node_and_match)
+  -- map_value (uses semantic.hover_predicate)
   ---------------------------------------------------------------------------
   describe('map_value', function()
     it('matches .map(_ => v) and suggests .as(v)', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.map(_ => 42)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.map_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.map_value)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
         replacement = 'as(42)',
       })
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.map(_ => 42)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.map_value)
+      local ready, pending = H.run_handler(bufnr, root, queries.map_value)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- catch_all_unit (uses utils.hover_node_and_match)
+  -- catch_all_unit (uses semantic.hover_predicate)
   ---------------------------------------------------------------------------
   describe('catch_all_unit', function()
     it('matches .catchAll(_ => ZIO.unit) and suggests .ignore', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.catchAll(_ => ZIO.unit)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.catch_all_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.catch_all_unit)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
         replacement = 'ignore',
       })
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.catchAll(_ => ZIO.unit)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.catch_all_unit)
+      local ready, pending = H.run_handler(bufnr, root, queries.catch_all_unit)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- or_else_fail (uses utils.hover_node_and_match)
+  -- or_else_fail (uses semantic.hover_predicate)
   ---------------------------------------------------------------------------
   describe('or_else_fail', function()
     it('matches .mapError(_ => v) and suggests .orElseFail(v)', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.mapError(_ => newErr)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.or_else_fail)
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
         replacement = 'orElseFail(newErr)',
       })
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.mapError(_ => newErr)]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.or_else_fail)
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 
   ---------------------------------------------------------------------------
-  -- or_else_fail2 (uses utils.hover_node_and_match)
+  -- or_else_fail2 (uses semantic.hover_predicate)
   ---------------------------------------------------------------------------
   describe('or_else_fail2', function()
     it('matches .orElse(ZIO.fail(v)) and suggests .orElseFail(v)', function()
-      H.mock_hover_node_and_match(true)
+      H.mock_hover_predicate(true)
       local source = [[val x = effect.orElse(ZIO.fail(newErr))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.or_else_fail2)
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail2)
 
-      assert.are.equal(1, #ready)
-      H.assert_result(ready[1], {
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
         replacement = 'orElseFail(newErr)',
       })
     end)
 
     it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_node_and_match(false)
+      H.mock_hover_predicate(false)
       local source = [[val x = effect.orElse(ZIO.fail(newErr))]]
       bufnr, root = H.parse_scala(source)
 
-      local ready, _ = H.run_handler(bufnr, root, queries.or_else_fail2)
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail2)
       assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+      assert.are.equal(0, #published)
     end)
   end)
 end)
