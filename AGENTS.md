@@ -78,35 +78,60 @@ vim.diagnostic.set(...)       vim.lsp.handlers['textDocument/codeAction']
 ```
 
 
-## 5. Pattern Catalog
-The following table lists the patterns currently defined in `query.lua`.
+## 5. Pattern Catalog & IntelliJ Parity
 
-| Pattern Name | Detection Summary | Suggested Replacement | Status |
-| :--- | :--- | :--- | :--- |
-| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` | Implemented |
-| `fail_exception_or_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` | Implemented |
-| `map_unit` | `.map(_ => ())` | `.unit` | Implemented |
-| `as_unit` | `.as(())` | `.unit` | Implemented |
-| `zip_right_unit` | `*> ZIO.unit` | `.unit` | Implemented |
-| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` | Implemented |
-| `zip_left_value` | `.tap(_ => v)` | `<* v` or `.zipLeft(v)` | Implemented |
-| `flat_map_value` | `.flatMap(_ => v)` | `*> v` or `.zipRight(v)` | Implemented |
-| `map_value` | `.map(_ => v)` | `.as(v)` | Implemented |
-| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` | Implemented |
-| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` | Implemented |
-| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` | Implemented |
-| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` | Implemented |
-| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` | Implemented |
-| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` | Implemented |
-| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` (and others) | Implemented |
-| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` (and others) | Implemented |
-| `zio_none` | `ZIO.succeed(None)` / `ZIO.succeed(none)` / `ZIO.succeed(Option.empty[A])` | `ZIO.none` | Implemented |
-| `zio_some` | `ZIO.succeed(Some(v))` / `ZIO.succeed(Option(v))` / `ZIO.succeed(v.some)` | `ZIO.some(v)` | Implemented |
-| `zio_either` | `ZIO.succeed(Left(v))` | `ZIO.left(v)` | Implemented |
-| `exit_code` | `.map(_ => ExitCode.success)` | `.exitCode` | **Placeholder** |
-| `exit_code2` | `.as(ExitCode.success)` | `.exitCode` | **Placeholder** |
-| `exit_code3` | `.fold(...)` | `.exitCode` | **Placeholder** |
-| `zio_die` | `ZIO.fail(new Exception).orDie` | `ZIO.die(...)` | **Placeholder** |
+### 5.1 Core Implemented Patterns
+The following 23 patterns are fully implemented in [lua/scala-hints/libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
+
+| Pattern Name | Detection Summary | Replacement | IntelliJ | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` | ✓ | ✅ |
+| `fail_exception_or_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` | ✓ | ✅ |
+| `map_unit` | `.map(_ => ...)` (any param) | `.unit` | ✓ | ✅ |
+| `as_unit` | `.as(())` | `.unit` | ✓ | ✅ |
+| `zip_right_unit` | `*> ZIO.unit` | `.unit` | ✓ | ✅ |
+| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` | ✓ | ✅ |
+| `zip_left_value` | `.tap(...) not used` | `.zipLeft` | ✓ | ✅ |
+| `flat_map_value` | `.flatMap(_ => v)` | `.zipRight` | ✓ | ✅ |
+| `map_value` | `.map(_ => v)` | `.as(v)` | ✓ | ✅ |
+| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` | ✓ | ✅ |
+| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach` | ✓ | ✅ |
+| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` | ✓ | ✅ |
+| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` | ✓ | ✅ |
+| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` | ✓ | ✅ |
+| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` | ✓ | ✅ |
+| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` or other aliases | ✓ | ✅ |
+| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` or other aliases | ✓ | ✅ |
+| `zio_none` | `ZIO.succeed(None)` etc | `ZIO.none` | ✓ | ✅ |
+| `zio_some` | `ZIO.succeed(Some(v))` etc | `ZIO.some(v)` | ✓ | ✅ |
+| `zio_either` | `ZIO.succeed(Left/Right(v))` | `ZIO.left/right(v)` | ✓ | ✅ |
+| `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` | ✓ | ✅ |
+| `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` | ✓ | ✅ |
+| `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` | ✓ | ✅ |
+
+### 5.2 Placeholder Patterns (Stub Implementations)
+The following patterns exist but need full query + handler implementation:
+
+| Pattern Name | Detection Summary | Replacement | Priority | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `exit_code*` (3 variants) | `.map/as/fold` → `ExitCode.success` | `.exitCode` | Medium | 🔄 |
+| `zio_die` | `ZIO.fail(...).orDie` | `ZIO.die(...)` | Low | 🔄 |
+
+### 5.3 Missing Patterns (IntelliJ Parity Gaps)
+The following 10+ patterns from the IntelliJ ZIO plugin are not yet implemented:
+
+| Pattern | Detection | Replacement | Complexity | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `.delay` | `ZIO.sleep(d) *> eff` | `eff.delay(d)` | Low | ⭕ |
+| `.provideLayer` | `layer.build.use(eff.provide)` | `eff.provideLayer(layer)` | Low | ⭕ |
+| `.toLayer` | `ZLayer.fromEffect(eff)` (deprecated) | `eff.toLayer` | Low | ⭕ |
+| `ZIO.service` | `ZIO.access(_.get)` with env | `ZIO.service[A]` | Low | ⭕ |
+| `.bimap` | Chained `.map().mapError()` | `.bimap(errFn, okFn)` | Medium | ⭕ |
+| `.tap/.tapError` | Effects discarded in map | `.tap(fn)` etc | Medium | ⭕ |
+| `.when`/`.unless` | `if (c) eff else ZIO.unit` | `eff.when(c)` | Medium | ⭕ |
+| `.foreachParN` | `ZIO.foreachPar(coll)(f)` | `.foreachParN(n)(coll)(f)` | Medium | ⭕ |
+| Type Modes | `CanFail`, `NeedsEnv`, contravariance | Mode-specific suggestions | High | ⭕ |
+| Advanced | Wrapping `Option/Future/Try`, yield in for | Type-specific wrapping | High | ⭕ |
 
 ## 6. Technical Details
 - **Treesitter Query Syntax**: Uses S-expressions for AST matching. Handlers often use `#eq?` and `#any-of?` predicates.

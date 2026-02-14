@@ -433,4 +433,112 @@ describe('ZIO pure queries (no LSP)', function()
       })
     end)
   end)
+
+  ---------------------------------------------------------------------------
+  -- delay
+  ---------------------------------------------------------------------------
+  describe('delay', function()
+    it('matches ZIO.sleep(duration) *> effect and suggests effect.delay(duration)', function()
+      local source = [[val x = ZIO.sleep(5.seconds) *> effect]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.delay)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.delay(5.seconds)',
+        title = 'ZIO: replace ZIO.sleep(5.seconds) *> effect with effect.delay(5.seconds)',
+      })
+    end)
+
+    it('matches ZIO.sleep(Duration.fromMillis(100)) *> effect', function()
+      local source = [[val result = ZIO.sleep(Duration.fromMillis(100)) *> otherZIO]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.delay(Duration.fromMillis(100))',
+      })
+    end)
+
+    it('does not match without *> operator', function()
+      local source = [[val x = ZIO.sleep(5.seconds)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match other infix operators', function()
+      local source = [[val x = ZIO.sleep(5.seconds) >> effect]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.delay)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- to_layer
+  ---------------------------------------------------------------------------
+  describe('to_layer', function()
+    it('matches ZLayer.fromEffect(effect) and suggests effect.toLayer', function()
+      local source = [[val layer = ZLayer.fromEffect(myEffect)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.to_layer)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.toLayer',
+        title = 'ZIO: replace ZLayer.fromEffect(myEffect) with myEffect.toLayer',
+      })
+    end)
+
+    it('does not match ZLayer.fromManaged', function()
+      local source = [[val layer = ZLayer.fromManaged(managed)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.to_layer)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- zio_service
+  ---------------------------------------------------------------------------
+  describe('zio_service', function()
+    it('matches ZIO.access(identity) and suggests ZIO.service', function()
+      local source = [[val svc = ZIO.access(identity)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_service)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'ZIO.service',
+      })
+    end)
+
+    it('does not match ZIO.access without identity', function()
+      local source = [[val svc = ZIO.access(_.get)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.zio_service)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match ZIO.access with other expressions', function()
+      local source = [[val svc = ZIO.access(_.foo)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.zio_service)
+      assert.are.equal(0, #ready)
+    end)
+  end)
 end)

@@ -974,4 +974,108 @@ return {
       }
     end,
   },
+
+  -- ZIO.sleep(duration) *> effect ~> effect.delay(duration)
+  delay = {
+    query = parse_query([[
+(infix_expression
+  left: (call_expression
+    function: (field_expression
+      value: (identifier) @_1 (#eq? @_1 "ZIO")
+      field: (identifier) @_2 (#eq? @_2 "sleep")
+    ) @_3
+    arguments: (arguments (_) @_4)
+  ) @_5
+  operator: (operator_identifier) @_6 (#eq? @_6 "*>")
+  right: (_) @_7
+) @_8
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[3][1]
+      local duration = matches[4][1]
+      local sleep_expr = matches[5][1]
+      local effect = matches[7][1]
+      local finish = matches[8][1]
+
+      local dstart_row, dstart_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local duration_text = utils.get_node_text(bufnr, duration)
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = '.delay(' .. duration_text .. ')',
+          title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
+        },
+      }
+    end,
+  },
+
+  -- ZLayer.fromEffect(effect) ~> effect.toLayer (deprecated API)
+  to_layer = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (identifier) @_1 (#eq? @_1 "ZLayer")
+    field: (identifier) @_2 (#eq? @_2 "fromEffect")
+  ) @_3
+  arguments: (arguments (_) @_4) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[3][1]
+      local effect = matches[4][1]
+      local finish = matches[5][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local effect_text = utils.get_node_text(bufnr, effect)
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = '.toLayer',
+          title = 'ZIO: replace ZLayer.fromEffect(' .. effect_text .. ') with ' .. effect_text .. '.toLayer',
+        },
+      }
+    end,
+  },
+
+  -- ZIO.access(identity) ~> ZIO.service[A]
+  -- Note: This is informational - suggests using ZIO.service[A]
+  zio_service = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (identifier) @_1 (#eq? @_1 "ZIO")
+    field: (identifier) @_2 (#eq? @_2 "access")
+  ) @_3
+  arguments: (arguments
+    (identifier) @_4 (#eq? @_4 "identity")
+  ) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[3][1]
+      local finish = matches[5][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      -- This pattern is primarily informational - suggests using ZIO.service[A]
+      -- In practice, ZIO.access(identity) is often used to access a service from the environment.
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'ZIO.service',
+          title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+        },
+      }
+    end,
+  },
 }
