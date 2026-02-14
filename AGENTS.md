@@ -124,7 +124,7 @@
    - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
 3. Register the query name in `lua/scala-hints/libs/zio/init.lua`.
 4. Use `semantic.hover_predicate` with `{ fallback = true }` for type verification.
-5. Add tests in `tests/zio/pure_queries_spec.lua` (mock hover with `H.mock_hover_predicate(true)`).
+5. Add tests in `tests/zio/queries_spec.lua` (mock hover with `H.mock_hover_predicate(true)`).
 6. Update the pattern catalog above.
 
 ### Treesitter Query Example
