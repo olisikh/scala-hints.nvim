@@ -35,13 +35,13 @@ jobs:
 
       - name: Install tree-sitter scala parser
         run: |
-          nvim --headless -u tests/minimal_init.lua \
-            -c "TSInstallSync! scala" \
-            -c "qa!"
-          # Verify parser was installed
-          nvim --headless -u tests/minimal_init.lua \
-            -c "lua print('scala parser: ' .. tostring(pcall(vim.treesitter.language.add, 'scala')))" \
-            -c "qa!"
+          # Build scala parser from source
+          git clone --depth 1 https://github.com/tree-sitter/tree-sitter-scala.git /tmp/tree-sitter-scala
+          cd /tmp/tree-sitter-scala
+          cc -shared -fPIC -o scala.so -I src src/parser.c src/scanner.c
+          # Install to nvim-treesitter's parser directory (on runtimepath)
+          mkdir -p ~/.local/share/nvim/site/pack/vendor/start/nvim-treesitter/parser
+          cp scala.so ~/.local/share/nvim/site/pack/vendor/start/nvim-treesitter/parser/scala.so
 
       - name: Run tests
         run: make test
