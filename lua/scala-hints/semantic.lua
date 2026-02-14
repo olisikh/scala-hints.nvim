@@ -3,6 +3,7 @@ local logger = require('scala-hints.logger').new('semantic')
 
 local settings = {
   hover_timeouts_ms = { 400, 1000, 2000 },
+  max_inflight = 4,
   log_misses = true,
 }
 
@@ -94,14 +95,10 @@ local function make_key(method, start_row, start_col, end_row, end_col)
   return table.concat({ method, start_row, start_col, end_row, end_col }, ':')
 end
 
--- Tune these:
-local MAX_INFLIGHT = 4
-local HOVER_TIMEOUTS_MS = settings.hover_timeouts_ms
-
 local function pump(bufnr)
   local s = buf_state(bufnr)
 
-  while s.inflight_n < MAX_INFLIGHT and #s.queue > 0 do
+  while s.inflight_n < settings.max_inflight and #s.queue > 0 do
     local job = table.remove(s.queue, 1)
     s.inflight_n = s.inflight_n + 1
 
@@ -132,15 +129,18 @@ local function pump(bufnr)
           reason = 'false'
         end
         if reason ~= nil then
-          logger.warn(string.format(
-            'hover result not cached (%s) for %s:%d:%d:%d:%d',
-            reason,
-            job.method,
-            job.sr,
-            job.sc,
-            job.er,
-            job.ec
-          ), { bufnr = bufnr })
+          logger.debug(
+            string.format(
+              'hover result not cached (%s) for %s:%d:%d:%d:%d',
+              reason,
+              job.method,
+              job.sr,
+              job.sc,
+              job.er,
+              job.ec
+            ),
+            { bufnr = bufnr }
+          )
         end
       end
 
@@ -158,16 +158,19 @@ local function pump(bufnr)
         return
       end
 
-      logger.warn(string.format(
-        'hover miss (%s) for %s:%d:%d:%d:%d after %d attempt(s)',
-        reason,
-        job.method,
-        job.sr,
-        job.sc,
-        job.er,
-        job.ec,
-        #job.timeouts
-      ), { bufnr = bufnr })
+      logger.debug(
+        string.format(
+          'hover miss (%s) for %s:%d:%d:%d:%d after %d attempt(s)',
+          reason,
+          job.method,
+          job.sr,
+          job.sc,
+          job.er,
+          job.ec,
+          #job.timeouts
+        ),
+        { bufnr = bufnr }
+      )
     end
 
     local function run_attempt(idx)
@@ -175,17 +178,20 @@ local function pump(bufnr)
       local resolved = false
       local timeout_ms = job.timeouts[idx]
 
-      logger.info(string.format(
-        'hover attempt %d/%d for %s:%d:%d:%d:%d (timeout=%dms)',
-        idx,
-        #job.timeouts,
-        job.method,
-        job.sr,
-        job.sc,
-        job.er,
-        job.ec,
-        timeout_ms
-      ), { bufnr = bufnr })
+      logger.debug(
+        string.format(
+          'hover attempt %d/%d for %s:%d:%d:%d:%d (timeout=%dms)',
+          idx,
+          #job.timeouts,
+          job.method,
+          job.sr,
+          job.sc,
+          job.er,
+          job.ec,
+          timeout_ms
+        ),
+        { bufnr = bufnr }
+      )
 
       vim.defer_fn(function()
         if resolved then
@@ -219,16 +225,19 @@ local function pump(bufnr)
 
         local eval_ok = job.eval(result)
         local text = result ~= nil and hover_contents_to_text(result.contents) or nil
-        logger.info(string.format(
-          'hover result for %s:%d:%d:%d:%d -> %s (text=%s)',
-          job.method,
-          job.sr,
-          job.sc,
-          job.er,
-          job.ec,
-          tostring(eval_ok),
-          truncate_text(text, 300) or 'nil'
-        ), { bufnr = bufnr })
+        logger.debug(
+          string.format(
+            'hover result for %s:%d:%d:%d:%d -> %s (text=%s)',
+            job.method,
+            job.sr,
+            job.sc,
+            job.er,
+            job.ec,
+            tostring(eval_ok),
+            truncate_text(text, 300) or 'nil'
+          ),
+          { bufnr = bufnr }
+        )
         if text == nil then
           done(false, false, 'no-hover')
         else
@@ -265,15 +274,18 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   -- cache hit (same tick)
   local cached = s.cache[key]
   if cached and cached.tick == tick then
-    logger.info(string.format(
-      'hover cache hit for %s:%d:%d:%d:%d -> %s',
-      'textDocument/hover',
-      sr,
-      sc,
-      er,
-      ec,
-      tostring(cached.value)
-    ), { bufnr = bufnr })
+    logger.debug(
+      string.format(
+        'hover cache hit for %s:%d:%d:%d:%d -> %s',
+        'textDocument/hover',
+        sr,
+        sc,
+        er,
+        ec,
+        tostring(cached.value)
+      ),
+      { bufnr = bufnr }
+    )
     cb(cached.value)
     return
   end
@@ -281,14 +293,10 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   -- inflight dedupe
   local infl = s.inflight[key]
   if infl and infl.tick == tick then
-    logger.info(string.format(
-      'hover inflight join for %s:%d:%d:%d:%d',
-      'textDocument/hover',
-      sr,
-      sc,
-      er,
-      ec
-    ), { bufnr = bufnr })
+    logger.debug(
+      string.format('hover inflight join for %s:%d:%d:%d:%d', 'textDocument/hover', sr, sc, er, ec),
+      { bufnr = bufnr }
+    )
     table.insert(infl.callbacks, cb)
     return
   end
@@ -296,14 +304,10 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   local clients = vim.lsp.get_clients({ bufnr = bufnr, name = 'metals' })
   local metals = clients[1]
   if not metals then
-    logger.warn(string.format(
-      'hover skipped: no Metals client for %s:%d:%d:%d:%d',
-      'textDocument/hover',
-      sr,
-      sc,
-      er,
-      ec
-    ), { bufnr = bufnr })
+    logger.warn(
+      string.format('hover skipped: no Metals client for %s:%d:%d:%d:%d', 'textDocument/hover', sr, sc, er, ec),
+      { bufnr = bufnr }
+    )
     cb(false)
     return
   end
@@ -322,7 +326,7 @@ function M.hover_predicate(bufnr, node, predicate, cb)
       metals.request('textDocument/hover', params, cb, bufnr)
     end,
     callbacks = { cb },
-    timeouts = HOVER_TIMEOUTS_MS,
+    timeouts = settings.hover_timeouts_ms,
     sr = sr,
     sc = sc,
     er = er,
@@ -361,7 +365,10 @@ function M.configure(opts)
   local timeouts = normalize_timeouts(hover.timeouts_ms)
   if timeouts then
     settings.hover_timeouts_ms = timeouts
-    HOVER_TIMEOUTS_MS = settings.hover_timeouts_ms
+  end
+
+  if type(hover.max_inflight) == 'number' and hover.max_inflight > 0 then
+    settings.max_inflight = hover.max_inflight
   end
 
   if type(hover.log_misses) == 'boolean' then

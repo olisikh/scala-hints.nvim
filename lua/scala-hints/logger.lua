@@ -1,13 +1,38 @@
-local log_dir = '/tmp/scala-hints/log'
+local constants = require('scala-hints.constants')
+local log_dir = '/tmp/' .. constants.client_name .. '/log'
 local dir_initialized = false
 
 local LEVELS = {
+  debug = { name = 'DEBUG', value = vim.log.levels.DEBUG },
   info = { name = 'INFO', value = vim.log.levels.INFO },
   warn = { name = 'WARN', value = vim.log.levels.WARN },
   error = { name = 'ERROR', value = vim.log.levels.ERROR },
 }
 
+local settings = {
+  enabled = true,
+  level = LEVELS.info.name,
+}
+
 local logger = {}
+
+function logger.configure(opts)
+  local logging = opts and opts.logging or nil
+  if not logging then
+    return
+  end
+
+  if type(logging.enabled) == 'boolean' then
+    settings.enabled = logging.enabled
+  end
+
+  if type(logging.level) == 'string' then
+    local level_key = string.lower(logging.level)
+    if LEVELS[level_key] then
+      settings.level = LEVELS[level_key].name
+    end
+  end
+end
 
 local function ensure_log_dir()
   if dir_initialized then
@@ -30,6 +55,14 @@ local function log_path()
 end
 
 local function write_line(name, level_name, message, opts)
+  if not settings.enabled then
+    return
+  end
+
+  if LEVELS[string.lower(level_name)].value < LEVELS[string.lower(settings.level)].value then
+    return
+  end
+
   local path = log_path()
   local bufnr = opts and opts.bufnr or vim.api.nvim_get_current_buf()
   local file = opts and opts.file or vim.api.nvim_buf_get_name(bufnr)
@@ -37,15 +70,8 @@ local function write_line(name, level_name, message, opts)
     file = 'unknown'
   end
   local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-  local formatted = string.format(
-    '%s [%s] (bufnr=%s file=%s) %s - %s\n',
-    timestamp,
-    level_name,
-    bufnr,
-    file,
-    name,
-    message
-  )
+  local formatted =
+    string.format('%s [%s] (bufnr=%s file=%s) %s - %s\n', timestamp, level_name, bufnr, file, name, message)
   local fd = vim.uv.fs_open(path, 'a', 420)
   if not fd then
     return
@@ -69,7 +95,7 @@ end
 
 local function make_logger(name)
   local meta = {}
-  local logger_name = name or 'scala-hints'
+  local logger_name = name or constants.plugin_name
 
   local function log(level_info)
     return function(message, opts)
@@ -78,6 +104,7 @@ local function make_logger(name)
     end
   end
 
+  meta.debug = log(LEVELS.debug)
   meta.info = log(LEVELS.info)
   meta.warn = log(LEVELS.warn)
   meta.error = log(LEVELS.error)

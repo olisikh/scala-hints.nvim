@@ -3,6 +3,7 @@
 --- Runs a parsed Treesitter query against a buffer's AST, invokes the
 --- handler for each match, and separates results into ready (synchronous)
 --- and pending (async/callback-based) items.
+local logger = require('scala-hints.logger').new('query')
 
 local M = {}
 
@@ -46,7 +47,7 @@ function M.run_query(opts)
     end
 
     if q.handler == nil then
-      vim.notify('Query ' .. query_name .. ' has no handler', vim.log.levels.WARN)
+      logger.warn('Query ' .. query_name .. ' has no handler')
       return cb({})
     end
     local ok_iter, iter_or_err = pcall(function()
@@ -54,7 +55,7 @@ function M.run_query(opts)
     end)
 
     if not ok_iter then
-      vim.notify('Query ' .. query_name .. ' failed: ' .. tostring(iter_or_err), vim.log.levels.WARN)
+      logger.warn('Query ' .. query_name .. ' failed: ' .. tostring(iter_or_err))
       return cb({})
     end
 
@@ -65,7 +66,7 @@ function M.run_query(opts)
       local ok_handler, res_or_err = pcall(q.handler, bufnr, matches)
 
       if not ok_handler then
-        vim.notify('Query ' .. query_name .. ' handler failed: ' .. tostring(res_or_err), vim.log.levels.WARN)
+        logger.warn('Query ' .. query_name .. ' handler failed: ' .. tostring(res_or_err))
       else
         local norm = normalize_handler_result(res_or_err)
 
@@ -76,7 +77,7 @@ function M.run_query(opts)
               table.insert(results, out)
             end
           else
-            vim.notify('Query ' .. query_name .. ' callback failed: ' .. tostring(out), vim.log.levels.WARN)
+            logger.warn('Query ' .. query_name .. ' callback failed: ' .. tostring(out))
           end
         end
 
@@ -104,7 +105,7 @@ function M.run_query(opts)
               table.insert(results, out)
             end
           else
-            vim.notify('Query ' .. query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
+            logger.warn('Query ' .. query_name .. ' callback failed (async): ' .. tostring(out))
           end
         end
 
@@ -115,7 +116,7 @@ function M.run_query(opts)
       end)
 
       if not ok_thunk then
-        vim.notify('Query ' .. query_name .. ' pending thunk failed: ' .. tostring(err), vim.log.levels.WARN)
+        logger.warn('Query ' .. query_name .. ' pending thunk failed: ' .. tostring(err))
         remaining = remaining - 1
         if remaining == 0 then
           cb(results)

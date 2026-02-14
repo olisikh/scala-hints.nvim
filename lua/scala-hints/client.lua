@@ -66,7 +66,7 @@ local function refresh_diagnostics(bufnr, dispatchers)
         },
         message = diag.message or '',
         severity = diag.severity or vim.diagnostic.severity.HINT,
-        source = diag.source or constants.source,
+        source = diag.source or constants.plugin_name,
       })
     end
 
@@ -312,7 +312,7 @@ function M.start(bufnr)
   client_id = lsp.start({
     name = constants.client_name,
     cmd = M.rpc_start,
-    filetypes = { constants.lang },
+    filetypes = { 'scala' },
     root_dir = vim.fn.getcwd(),
     on_attach = function(_, buf)
       logger.info('Client attached to buffer ' .. buf)

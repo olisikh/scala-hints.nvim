@@ -79,7 +79,7 @@ M.hover_node_and_match = function(bufnr, node, predicate)
 
   vim.lsp.buf_request(bufnr, 'textDocument/hover', params, function(err, result, _, _)
     if err ~= nil then
-      vim.notify(string.format('Request textDocument/hover to Metals LSP server has failed: %s', err))
+      logger.error(string.format('Request textDocument/hover to Metals LSP server has failed: %s', err))
       return false
     end
 
