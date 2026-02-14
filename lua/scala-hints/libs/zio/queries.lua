@@ -49,10 +49,12 @@ return {
       return {
         ready = {},
         pending = {
-          function(publish)
+          function(done)
             semantic.hover_predicate(bufnr, target, zio_predicate, function(is_zio)
               if is_zio then
-                publish(item)
+                done(item)
+              else
+                done(nil)
               end
             end)
           end,
@@ -455,7 +457,12 @@ return {
       local value_text = utils.get_node_text(bufnr, value)
       local collection_text = utils.get_node_text(bufnr, collection)
 
-      local replacement = foreach_text == 'collectAll' and 'foreach' or 'foreachPar'
+      local replacement
+      if foreach_text == 'collectAll' then
+        replacement = 'foreach'
+      else
+        replacement = 'foreachPar'
+      end
 
       return {
         {
@@ -852,11 +859,11 @@ return {
     handler = function(bufnr, matches)
       local start = matches[3][1]
 
-      local either = matches[4][1]
-      local cats_either = matches[7][1]
+      local either = matches[4] and matches[4][1]
+      local cats_either = matches[7] and matches[7][1]
 
-      local value = matches[5][1]
-      local cats_value = matches[6][1]
+      local value = matches[5] and matches[5][1]
+      local cats_value = matches[6] and matches[6][1]
 
       local expr = matches[8][1]
       local finish = matches[9][1]

@@ -10,8 +10,6 @@ local M = {}
 --- Add new libraries here.
 local lib_modules = {
   'scala-hints.libs.zio',
-  -- 'scala-hints.libs.cats',
-  -- 'scala-hints.libs.kyo',
 }
 
 --- Cached merged query table: { "lib/query_name" -> query_def }

@@ -41,9 +41,14 @@ function M.run_query(opts)
 
   return function(cb)
     if q == nil or q.query == nil then
+      -- No query to run; preserve existing behavior of silently returning no results.
       return cb({})
     end
 
+    if q.handler == nil then
+      vim.notify('Query ' .. query_name .. ' has no handler', vim.log.levels.WARN)
+      return cb({})
+    end
     local ok_iter, iter_or_err = pcall(function()
       return q.query:iter_matches(root, bufnr, start_line, end_line + 1)
     end)
@@ -79,20 +84,37 @@ function M.run_query(opts)
       end
     end
 
-    -- Return ready batch immediately
-    cb(results)
+    -- If there are no pending items, return ready batch immediately.
+    if #pending == 0 then
+      return cb(results)
+    end
 
-    -- Publish late items as they resolve (async)
+    -- Wait for all pending thunks to resolve before calling cb.
+    -- Each pending thunk MUST call its done(item_or_nil) callback exactly once.
+    local remaining = #pending
     for _, thunk in ipairs(pending) do
       local ok_thunk, err = pcall(thunk, function(item)
-        local ok_cb, out = pcall(callback, item)
-        if not ok_cb then
-          vim.notify('Query ' .. query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
+        if item ~= nil then
+          local ok_cb, out = pcall(callback, item)
+          if ok_cb then
+            table.insert(results, out)
+          else
+            vim.notify('Query ' .. query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
+          end
+        end
+
+        remaining = remaining - 1
+        if remaining == 0 then
+          cb(results)
         end
       end)
 
       if not ok_thunk then
         vim.notify('Query ' .. query_name .. ' pending thunk failed: ' .. tostring(err), vim.log.levels.WARN)
+        remaining = remaining - 1
+        if remaining == 0 then
+          cb(results)
+        end
       end
     end
   end
