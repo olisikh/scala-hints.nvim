@@ -3,13 +3,19 @@ local utils = require('scala-hints.utils')
 local query = require('scala-hints.query')
 local libs = require('scala-hints.libs')
 local constants = require('scala-hints.constants')
+local diagnostics_config = require('scala-hints.diagnostics_config')
 local logger = require('scala-hints.logger').new('diagnostics')
 
 local source = constants.source
 
 local M = {}
 
-local function make_diagnostic(result)
+local function make_diagnostic(result, query_name, query_def)
+  local severity = diagnostics_config.resolve(query_name, query_def)
+  if severity == false then
+    return nil
+  end
+
   local diagnostic = result.diagnostic
   return {
     lnum = diagnostic.row,
@@ -18,7 +24,7 @@ local function make_diagnostic(result)
     end_col = diagnostic.end_col,
     message = result.title,
     source = source,
-    severity = vim.diagnostic.severity.HINT,
+    severity = severity or vim.diagnostic.severity.INFO,
   }
 end
 
@@ -43,7 +49,9 @@ function M.collect_diagnostics(bufnr, done)
             query_def = query_def,
             start_line = start_line,
             end_line = end_line,
-            callback = make_diagnostic,
+            callback = function(item)
+              return make_diagnostic(item, query_name, query_def)
+            end,
           }),
           1
         )

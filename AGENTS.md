@@ -111,7 +111,6 @@ The following 35 patterns are fully implemented in [lua/scala-hints/libs/zio/que
 | `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` | ✓ | ✅ |
 | `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` | ✓ | ✅ |
 | `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` | ✓ | ✅ |
-| `bimap` | `effect.map(ok).mapError(err)` | `.bimap(err, ok)` | ✓ | ✅ |
 | `tap` | `effect.map(v => { sideEffect(v); v })` | `.tap(...)` | ✓ | ✅ |
 | `tap_error` | `effect.mapError(e => { sideEffect(e); e })` | `.tapError(...)` | ✓ | ✅ |
 | `tap_both` | `map/mapError` side-effects | `.tapBoth(...)` | ✓ | ✅ |
@@ -159,7 +158,6 @@ The following items are tracked for future implementation (from `TODO.md`):
 - **Reliable Metals Wait**: Improve the logic for waiting until Metals indexing is complete.
 - **Undo Trigger**: Fix diagnostic refresh after undo.
 - **New Hints**:
-    - `.bimap`
     - `.when` / `.unless`
     - `.exitCode` (implementing placeholders)
     - `.delay`
@@ -170,7 +168,7 @@ The following items are tracked for future implementation (from `TODO.md`):
 ## 9. Future Enhancement Ideas
 | Category | Immediate | Medium-Term | Long-Term | Documentation/UX |
 | :--- | :--- | :--- | :--- | :--- |
-| **Feature** | Implement `exitCode` | Add `.bimap` support | Support for `ZPure` | Pattern Catalog UI |
+| **Feature** | Implement `exitCode` | Support for `ZPure` | Type mode hints | Pattern Catalog UI |
 | **Stability** | Fix Undo refresh | Improve Metals polling | Add caching layer | Troubleshooting guide |
 | **Quality** | Add basic unit tests | Expand type checking | Support type aliases | Contributor guide |
 | **Performance** | Optimize TS queries | Async query batching | Incremental parsing | Metrics dashboard |
@@ -182,6 +180,7 @@ To add a new pattern to the plugin:
 2. **Define the Query**: Add a new entry to the `queries` table in `lua/scala-hints/query.lua`.
     - Write the Treesitter S-expression.
     - Implement the `handler` function to extract ranges and suggest replacements.
+  - (Optional) Set `diagnostic_severity` to `INFO`, `WARN`, `ERROR`, `HINT`, or `OFF` to control per-query diagnostics.
 3. **Register the Query**: Add the query name to the `query_names` list in both `lua/scala-hints/diagnostics.lua` and `lua/scala-hints/actions.lua`.
 4. **Implement Type Verification (Optional)**: Use `semantic.hover_predicate` if the pattern should only apply to specific types (e.g., `ZIO`).
 5. **Manual Verification**: Open a Scala file and verify that the diagnostic appears and the code action works as expected.

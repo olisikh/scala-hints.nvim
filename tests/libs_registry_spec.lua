@@ -28,7 +28,7 @@ describe('libs registry', function()
       end
     end)
 
-    it('contains all 35 known ZIO queries', function()
+    it('contains all 34 known ZIO queries', function()
       local expected = {
         'zio/succeed_unit',
         'zio/zio_die',
@@ -56,7 +56,6 @@ describe('libs registry', function()
         'zio/to_layer',
         'zio/provide_layer',
         'zio/zio_service',
-        'zio/bimap',
         'zio/exit_code_map',
         'zio/exit_code_as',
         'zio/exit_code_fold',

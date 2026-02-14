@@ -8,7 +8,7 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 | --- | --- |
 | **Status** | Sandbox/learning project—use at your own risk. |
 | **Lines of Lua** | 1,557 total; `lua/scala-hints/query.lua` is the pattern-heavy core (~1,135 lines). |
-| **Test Coverage** | Plenary.busted suites in `tests/` (current: 173 passing). |
+| **Test Coverage** | Plenary.busted suites in `tests/` (current: 169 passing). |
 | **Dependencies** | `plenary.nvim`, `nvim-treesitter`, `nvim-metals`. |
 | **Primary Goal** | Detect common ZIO code smells and offer idiomatic replacements (e.g., `.map(_ => ())` → `.unit`). |
 
@@ -17,7 +17,7 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 - **Native diagnostics & code actions**: Hooks Neovim autocommands and `vim.lsp.handlers` to reuse the same query list, pushing results through `vim.diagnostic.set()` and the native code-action plumbing.
 - **Metals-aware validation**: `utils.hover_node_and_match` inspects the hover response to ensure replacements apply to actual ZIO nodes.
 - **Async humble flow**: Every query runs via `plenary.async`; `run_or_timeout` and dedicated timeouts (10s for Metals readiness, 10s for actions, 30s for diagnostics) keep prompts responsive.
-- **Pattern catalog**: 35 Treesitter patterns implemented across constructors, combinators, error handling, type aliases, and `Option`/`Either` helpers—full details live in `AGENTS.md`.
+- **Pattern catalog**: 34 Treesitter patterns implemented across constructors, combinators, error handling, type aliases, and `Option`/`Either` helpers—full details live in `AGENTS.md`.
 
 ## Architecture Overview
 
@@ -66,7 +66,7 @@ Implemented optimizations:
 - Optional/either helpers: `zio_none`, `zio_some`, `zio_either`
 - Timing & layers: `delay`, `to_layer`, `provide_layer`
 - Service access: `zio_service`
-- Transform helpers: `bimap`, `tap`, `tap_error`, `tap_both`, `when`, `unless`
+- Transform helpers: `tap`, `tap_error`, `tap_both`, `when`, `unless`
 - Exit codes: `exit_code_map`, `exit_code_as`, `exit_code_fold`
 
 Every handler returns a payload that populates both diagnostics and code actions, making it easy to surface the hint or apply the replacement automatically.
@@ -95,16 +95,26 @@ require('scala-hints').setup({
     timeouts_ms = { 400, 1000, 2000 },
     log_misses = true,
   },
+  diagnostics = {
+    default_severity = 'HINT',
+    overrides = {
+      ['zio/zip_left_value'] = 'OFF',
+      ['zio/zip_right_operator'] = 'OFF',
+      ['zio/zio_die'] = 'WARN',
+    },
+  },
 })
 ```
 
 - `hover.timeouts_ms`: List of retry timeouts (ms) for Metals hover; each timeout triggers a retry.
 - `hover.log_misses`: When `true`, logs final hover misses to `/tmp/scala-hints/log`.
+- `diagnostics.default_severity`: Default diagnostic severity (`HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`).
+- `diagnostics.overrides`: Per-query overrides keyed by query name (`zio/<query>`). Use `OFF` to suppress diagnostics while still emitting code actions.
 
 ## Usage
 
 - Open a Scala file where Metals is ready.
-- Diagnostics appear as hints (`Hint` severity) summarizing the code smell plus the suggested replacement.
+- Diagnostics appear as `HINT` by default, with per-query overrides controlling whether they show and their severity.
 - Use `:lua vim.lsp.buf.code_action()` or bind it to a key to see scala-hints code actions:
   ```lua
   vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action, { noremap = true })
@@ -125,7 +135,6 @@ Per [TODO.md](TODO.md) and the `AGENTS.md` plan:
 - [x] `.delay`
 - [x] `.toLayer`
 - [x] `ZIO.service`
-- [x] `.bimap`
 - [x] `.tap` / `.tapError`
 - [x] `.when`
 - [x] `.exitCode` (map/as/fold variants)
@@ -140,8 +149,8 @@ Per [TODO.md](TODO.md) and the `AGENTS.md` plan:
 
 - **Total LOC**: 1,557 lines across six Lua modules.
 - **Query core**: `lua/scala-hints/query.lua` carries ~1,135 lines focused on Treesitter logic.
-- **Patterns**: 35 implemented hints.
-- **Tests**: Plenary.busted suite in `tests/` (current: 173 passing).
+- **Patterns**: 34 implemented hints.
+- **Tests**: Plenary.busted suite in `tests/` (current: 169 passing).
 - **Limitations**: Strict reliance on literal `ZIO` identifiers, no caching, possible false positives where handlers skip Metals validation, and the entire plugin is still a learning sandbox.
 
 ## Troubleshooting

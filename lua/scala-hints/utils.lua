@@ -83,8 +83,6 @@ M.hover_node_and_match = function(bufnr, node, predicate)
       return false
     end
 
-    logger.info('Response from metals hover: ' .. tostring(hover_value))
-
     local is_zio = result ~= nil
       and result.contents ~= nil
       and result.contents.value ~= nil

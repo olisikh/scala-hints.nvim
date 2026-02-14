@@ -1,6 +1,6 @@
 # TODO: IntelliJ ZIO Plugin Parity Roadmap
 
-## Completed (35 patterns - ✅)
+## Completed (34 patterns - ✅)
 - ✅ `.unit` (from `.succeed(())`, `.map(_ => ())`, `.as(())`)
 - ✅ `.ignore` (from `.catchAll(_ => ZIO.unit)`, `.foldCause(...)`)
 - ✅ `.as` / `.zipRight` (from `*> ZIO.succeed(v)`, `.flatMap(_ => v)`, `.map(_ => v)`)
@@ -15,7 +15,6 @@
 - ✅ `.provideLayer` (from `layer.build.use(effect.provide)`)
 - ✅ `.toLayer` (from `ZLayer.fromEffect(effect)`)
 - ✅ `ZIO.service` (from `ZIO.access(identity)`)
-- ✅ `.bimap` (from chained `.map`/`.mapError`)
 - ✅ `.tap` / `.tapError` (block-style lambdas returning their parameter)
 - ✅ `.when` / `.unless` (from `if (cond) effect else ZIO.unit`)
 - ✅ `.tapBoth` (chained `map`/`mapError` side-effects)
@@ -82,20 +81,6 @@ ZIO.service[A]
 -- **Status**: ✅ Completed
 
 ## Medium Priority - Missing Medium-Complexity Patterns
-
-### 5. `.bimap` Pattern
-```scala
-// Detect:
-effect.map(okFn).mapError(errFn)
-effect.mapError(errFn).map(okFn)
-
-// Suggest:
-effect.bimap(errFn, okFn)
-```
-- **Complexity**: Medium 🟡
-- **Testing**: Pure pattern matching
-- **Files to update**: `queries.lua`, `pure_queries_spec.lua`
--- **Status**: ✅ Completed
 
 ### 6. `.tap` / `.tapError` / `.tapBoth` Patterns
 ```scala
@@ -213,7 +198,6 @@ exit_code3: .fold(_, _) returning ExitCode
   - [x] `ZIO.service`
   
 - [ ] High Priority Phase 2 (Medium-complexity patterns)
-  - [x] `.bimap`
   - [x] `.tap` / `.tapError` / `.tapBoth`
   - [x] `.when` / `.unless`
   - [x] `.foreachParN`

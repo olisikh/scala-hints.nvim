@@ -72,7 +72,9 @@ function M.run_query(opts)
         for _, item in ipairs(norm.ready) do
           local ok_cb, out = pcall(callback, item)
           if ok_cb then
-            table.insert(results, out)
+            if out ~= nil then
+              table.insert(results, out)
+            end
           else
             vim.notify('Query ' .. query_name .. ' callback failed: ' .. tostring(out), vim.log.levels.WARN)
           end
@@ -98,7 +100,9 @@ function M.run_query(opts)
         if item ~= nil then
           local ok_cb, out = pcall(callback, item)
           if ok_cb then
-            table.insert(results, out)
+            if out ~= nil then
+              table.insert(results, out)
+            end
           else
             vim.notify('Query ' .. query_name .. ' callback failed (async): ' .. tostring(out), vim.log.levels.WARN)
           end

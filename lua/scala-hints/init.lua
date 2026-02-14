@@ -1,6 +1,7 @@
 local constants = require('scala-hints.constants')
 local client = require('scala-hints.client')
 local semantic = require('scala-hints.semantic')
+local diagnostics_config = require('scala-hints.diagnostics_config')
 local logger = require('scala-hints.logger').new('init')
 
 local M = {}
@@ -12,6 +13,7 @@ M.setup = function(_opts)
   logger.info('Module initializing')
 
   semantic.configure(_opts)
+  diagnostics_config.configure(_opts)
 
   -- Listen for Metals attaching to Scala buffers.
   -- When Metals is ready we start (or reuse) our in-process LSP client

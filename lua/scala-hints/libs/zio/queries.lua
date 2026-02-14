@@ -262,6 +262,7 @@ return {
 
   -- x.zipRight(v) ~> x *> v
   zip_right_operator = {
+    diagnostic_severity = 'OFF',
     query = parse_query([[
 (call_expression
   function: (field_expression
@@ -306,6 +307,7 @@ return {
 
   -- x.tap(_ => v) ~> x <* v / x.zipLeft(v)
   zip_left_value = {
+    diagnostic_severity = 'OFF',
     query = parse_query([[
 (call_expression
   function: (field_expression
@@ -1198,71 +1200,6 @@ return {
           title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
         },
       }
-    end,
-  },
-
-  -- effect.map(okFn).mapError(errFn) ~> effect.bimap(errFn, okFn)
-  -- or effect.mapError(errFn).map(okFn) ~> effect.bimap(errFn, okFn)
-  bimap = {
-    query = parse_query([[
-(call_expression
-  function: (field_expression
-    value: (call_expression
-      function: (field_expression
-        value: (_) @_1
-        field: (identifier) @_2 (#any-of? @_2 "map" "mapError")
-      ) @_3
-      arguments: (arguments (_) @_4)
-    ) @_5
-    field: (identifier) @_6 (#any-of? @_6 "map" "mapError")
-  ) @_7
-  arguments: (arguments (_) @_8)
-) @_9
-]]),
-    handler = function(bufnr, matches)
-      local effect = matches[1][1]
-      local first_method = matches[2][1]
-      local second_method = matches[6][1]
-      local start = matches[7][1]
-      local finish = matches[9][1]
-
-      local start_row, start_col, _, _ = start:range()
-      local _, _, end_row, end_col = finish:range()
-
-      local first_method_text = utils.get_node_text(bufnr, first_method)
-      local second_method_text = utils.get_node_text(bufnr, second_method)
-
-      -- Only suggest bimap if methods are different (one is map, one is mapError)
-      local is_valid_bimap = (first_method_text == 'map' and second_method_text == 'mapError')
-        or (first_method_text == 'mapError' and second_method_text == 'map')
-
-      if is_valid_bimap then
-        local first_arg = matches[4][1]
-        local second_arg = matches[8][1]
-        local first_arg_text = utils.get_node_text(bufnr, first_arg)
-        local second_arg_text = utils.get_node_text(bufnr, second_arg)
-
-        -- Figure out which arg is error and which is ok
-        local err_fn, ok_fn
-        if first_method_text == 'map' then
-          ok_fn = first_arg_text
-          err_fn = second_arg_text
-        else
-          err_fn = first_arg_text
-          ok_fn = second_arg_text
-        end
-
-        return {
-          {
-            diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-            action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-            replacement = '.bimap(' .. err_fn .. ', ' .. ok_fn .. ')',
-            title = 'ZIO: replace .' .. first_method_text .. '(...) .' .. second_method_text .. '(...) with .bimap(' .. err_fn .. ', ' .. ok_fn .. ')',
-          },
-        }
-      else
-        return {}
-      end
     end,
   },
 
