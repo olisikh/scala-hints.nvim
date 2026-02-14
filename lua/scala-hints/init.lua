@@ -43,6 +43,7 @@ M.setup = function(_opts)
     end,
   })
 
+
   logger.info('Plugin initialized')
   return M
 end

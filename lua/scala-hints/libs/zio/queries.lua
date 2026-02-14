@@ -122,7 +122,10 @@ return {
     field: (identifier) @_2 (#eq? @_2 "map")
   )
   (arguments
-    (lambda_expression parameters: (wildcard) (unit))
+    (lambda_expression
+      parameters: [(wildcard) (identifier)]
+      (unit)
+    )
   ) @_3
 )
 ]]),
@@ -383,7 +386,8 @@ return {
   )
   arguments: (arguments
     (lambda_expression
-      parameters: (wildcard) (_) @_3 (#not-eq? @_3 "()")
+      parameters: [(wildcard) (identifier)]
+      (_) @_3 (#not-eq? @_3 "()")
     )
   ) @_4
 )
@@ -567,7 +571,10 @@ return {
     field: (identifier) @_2 (#eq? @_2 "mapError")
   )
   arguments: (arguments
-    (lambda_expression parameters: (wildcard) (_) @_3)
+    (lambda_expression
+      parameters: [(wildcard) (identifier)]
+      (_) @_3
+    )
   )
 ) @_4
 ]]),

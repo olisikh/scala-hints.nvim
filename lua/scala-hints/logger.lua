@@ -29,11 +29,23 @@ local function log_path()
   return string.format('%s/%s.log', log_dir, date)
 end
 
-local function write_line(name, level_name, message)
+local function write_line(name, level_name, message, opts)
   local path = log_path()
-  local bufnr = vim.api.nvim_get_current_buf()
+  local bufnr = opts and opts.bufnr or vim.api.nvim_get_current_buf()
+  local file = opts and opts.file or vim.api.nvim_buf_get_name(bufnr)
+  if file == nil or file == '' then
+    file = 'unknown'
+  end
   local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-  local formatted = string.format('%s [%s] (%s) %s - %s\n', timestamp, level_name, bufnr, name, message)
+  local formatted = string.format(
+    '%s [%s] (bufnr=%s file=%s) %s - %s\n',
+    timestamp,
+    level_name,
+    bufnr,
+    file,
+    name,
+    message
+  )
   local fd = vim.uv.fs_open(path, 'a', 420)
   if not fd then
     return
@@ -60,9 +72,9 @@ local function make_logger(name)
   local logger_name = name or 'scala-hints'
 
   local function log(level_info)
-    return function(message)
+    return function(message, opts)
       local text = flatten_message(message)
-      write_line(logger_name, level_info.name, text)
+      write_line(logger_name, level_info.name, text, opts)
     end
   end
 

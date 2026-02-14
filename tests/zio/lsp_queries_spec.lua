@@ -90,6 +90,28 @@ describe('ZIO queries with LSP hover mock', function()
       })
     end)
 
+    it('matches .map(x => ()) with ZIO hover and suggests .unit', function()
+      H.mock_hover_predicate(true)
+      local source = [[val x = effect.map(x => ())]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.map_unit)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
+        replacement = 'unit',
+        title = 'ZIO: replace .map(_ => ()) with .unit',
+      })
+    end)
+
     it('returns nothing when hover says not ZIO', function()
       H.mock_hover_predicate(false)
       local source = [[val x = effect.map(_ => ())]]
@@ -221,6 +243,27 @@ describe('ZIO queries with LSP hover mock', function()
       })
     end)
 
+    it('matches .map(x => v) and suggests .as(v)', function()
+      H.mock_hover_predicate(true)
+      local source = [[val x = effect.map(x => 42)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.map_value)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
+        replacement = 'as(42)',
+      })
+    end)
+
     it('returns nothing when hover says not ZIO', function()
       H.mock_hover_predicate(false)
       local source = [[val x = effect.map(_ => 42)]]
@@ -287,6 +330,27 @@ describe('ZIO queries with LSP hover mock', function()
     it('matches .mapError(_ => v) and suggests .orElseFail(v)', function()
       H.mock_hover_predicate(true)
       local source = [[val x = effect.mapError(_ => newErr)]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+
+      local published = {}
+      pending[1](function(item)
+        table.insert(published, item)
+      end)
+
+      assert.are.equal(1, #published)
+      H.assert_result(published[1], {
+        replacement = 'orElseFail(newErr)',
+      })
+    end)
+
+    it('matches .mapError(err => v) and suggests .orElseFail(v)', function()
+      H.mock_hover_predicate(true)
+      local source = [[val x = effect.mapError(err => newErr)]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)

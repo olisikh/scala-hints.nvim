@@ -125,6 +125,14 @@ describe('ZIO diagnostics/actions integration', function()
         expected_replacement = 'as(42)',
       },
       {
+        name = 'map_value_named',
+        source = [[val x = effect.map(x => 42)]],
+        query_name = 'map_value',
+        query_def = queries.map_value,
+        expected_count = 1,
+        expected_replacement = 'as(42)',
+      },
+      {
         name = 'catch_all_unit',
         source = [[val x = effect.catchAll(_ => ZIO.unit)]],
         query_name = 'catch_all_unit',
@@ -135,6 +143,14 @@ describe('ZIO diagnostics/actions integration', function()
       {
         name = 'or_else_fail',
         source = [[val x = effect.mapError(_ => newErr)]],
+        query_name = 'or_else_fail',
+        query_def = queries.or_else_fail,
+        expected_count = 1,
+        expected_replacement = 'orElseFail(newErr)',
+      },
+      {
+        name = 'or_else_fail_named',
+        source = [[val x = effect.mapError(err => newErr)]],
         query_name = 'or_else_fail',
         query_def = queries.or_else_fail,
         expected_count = 1,
