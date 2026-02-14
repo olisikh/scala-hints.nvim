@@ -17,13 +17,13 @@ describe('libs registry', function()
       assert.is_true(vim.tbl_count(all) > 0)
     end)
 
-    it('namespaces ZIO queries as zio/<name>', function()
+    it('namespaces queries as <lib>/<name>', function()
       local all = libs.get_all_queries()
-      -- Every key must start with "zio/"
+      -- Every key must start with a registered lib prefix
       for key, _ in pairs(all) do
         assert.is_truthy(
-          key:match('^zio/'),
-          'Expected key to start with "zio/", got: ' .. key
+          key:match('^zio/') or key:match('^cats%-effect/'),
+          'Expected key to start with a lib prefix, got: ' .. key
         )
       end
     end)
@@ -65,6 +65,36 @@ describe('libs registry', function()
         'zio/tap_both',
         'zio/when',
         'zio/unless',
+      }
+      local all = libs.get_all_queries()
+      for _, name in ipairs(expected) do
+        assert.is_truthy(all[name], 'Missing query: ' .. name)
+      end
+    end)
+
+    it('contains known Cats-Effect queries', function()
+      local expected = {
+        'cats-effect/map_unit',
+        'cats-effect/map_value',
+        'cats-effect/flat_map_value',
+        'cats-effect/when_a',
+        'cats-effect/unless_a',
+        'cats-effect/flat_tap',
+        'cats-effect/raise_unless',
+        'cats-effect/raise_when',
+        'cats-effect/from_option',
+        'cats-effect/from_either',
+        'cats-effect/from_try',
+        'cats-effect/handle_error',
+        'cats-effect/redeem',
+        'cats-effect/delay_by',
+        'cats-effect/timeout',
+        'cats-effect/tupled',
+        'cats-effect/par_tupled',
+        'cats-effect/par_sequence',
+        'cats-effect/par_sequence_',
+        'cats-effect/replicate_a_',
+        'cats-effect/forever_m',
       }
       local all = libs.get_all_queries()
       for _, name in ipairs(expected) do

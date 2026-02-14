@@ -11,37 +11,48 @@ local utils = require('scala-hints.utils')
 local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
---- Robust ZIO type detection: checks for ZIO type patterns in hover response
-local function is_zio_type(hover_value)
-  if not hover_value or type(hover_value) ~= 'string' then
+--- Robust ZIO type detection: checks for ZIO type patterns in definition URI
+local function is_zio_type(uri_value)
+  if not uri_value or type(uri_value) ~= 'string' then
     return false
+  end
+  local lower = uri_value:lower()
+  if lower:find('/zio/') ~= nil or lower:find('!/zio/') ~= nil then
+    return true
   end
   -- Check for ZIO type patterns: ZIO[, UIO[, IO[, etc.
-  return string.find(hover_value, 'ZIO%[') ~= nil
-    or string.find(hover_value, 'UIO%[') ~= nil
-    or string.find(hover_value, 'IO%[') ~= nil
-    or string.find(hover_value, 'URIO%[') ~= nil
-    or string.find(hover_value, 'RIO%[') ~= nil
-    or string.find(hover_value, 'Task%[') ~= nil
-    or string.find(hover_value, 'Managed%[') ~= nil
-    or string.find(hover_value, 'ZStream%[') ~= nil
-    or string.find(hover_value, ': ZIO') ~= nil
-    or string.find(hover_value, 'object ZIO') ~= nil
+  return string.find(uri_value, 'zio%.ZIO%[') ~= nil
+    or string.find(uri_value, ': ZIO') ~= nil
+    or string.find(uri_value, 'object ZIO') ~= nil
+    or string.find(uri_value, 'zio%.UIO%[') ~= nil
+    or string.find(uri_value, 'zio%.URIO%[') ~= nil
+    or string.find(uri_value, 'zio%.RIO%[') ~= nil
+    or string.find(uri_value, 'zio%.Task%[') ~= nil
+    or string.find(uri_value, 'zio%.Managed%[') ~= nil
+    or string.find(uri_value, 'zio%.stream%.ZStream%[') ~= nil
+    or string.find(uri_value, 'zio%.IO%[') ~= nil
+    or string.find(uri_value, 'zio%.UIO%[') ~= nil
+    or string.find(uri_value, 'zio%.URIO%[') ~= nil
+    or string.find(uri_value, 'zio%.RIO%[') ~= nil
 end
 
---- Robust ZLayer type detection: checks for ZLayer type patterns in hover response
-local function is_zlayer_type(hover_value)
-  if not hover_value or type(hover_value) ~= 'string' then
+--- Robust ZLayer type detection: checks for ZLayer type patterns in definition URI
+local function is_zlayer_type(uri_value)
+  if not uri_value or type(uri_value) ~= 'string' then
     return false
   end
-  return string.find(hover_value, 'ZLayer%[') ~= nil
-    or string.find(hover_value, 'ULayer%[') ~= nil
-    or string.find(hover_value, 'TaskLayer%[') ~= nil
-    or string.find(hover_value, 'URLayer%[') ~= nil
-    or string.find(hover_value, 'RLayer%[') ~= nil
-    or string.find(hover_value, 'Layer%[') ~= nil
-    or string.find(hover_value, ': ZLayer') ~= nil
-    or string.find(hover_value, 'object ZLayer') ~= nil
+  local lower = uri_value:lower()
+  if lower:find('/zio/') ~= nil or lower:find('!/zio/') ~= nil then
+    return true
+  end
+  return string.find(uri_value, 'zio%.ZLayer%[') ~= nil
+    or string.find(uri_value, ': ZLayer') ~= nil
+    or string.find(uri_value, 'object ZLayer') ~= nil
+    or string.find(uri_value, 'zio%.ULayer%[') ~= nil
+    or string.find(uri_value, 'zio%.TaskLayer%[') ~= nil
+    or string.find(uri_value, 'zio%.URLayer%[') ~= nil
+    or string.find(uri_value, 'zio%.RLayer%[') ~= nil
+    or string.find(uri_value, 'zio%.Layer%[') ~= nil
 end
 
 local function parse_query(query)
@@ -99,7 +110,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -117,13 +128,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -145,7 +156,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local exception = matches[4][1]
       local finish = matches[5][1]
@@ -166,13 +177,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -196,7 +207,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -214,13 +225,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -240,7 +251,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -260,13 +271,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -285,7 +296,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -303,13 +314,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -332,7 +343,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[5][1]
       local value = matches[6][1]
@@ -355,13 +366,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -381,7 +392,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -393,7 +404,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -406,7 +417,7 @@ return {
                 replacement = ' *> ' .. value_text,
                 title = 'ZIO: replace .zipRight(' .. value_text .. ') with *> ' .. value_text,
               })
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -430,7 +441,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -444,7 +455,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -465,7 +476,7 @@ return {
                 replacement = '.zipLeft(' .. value_text .. ')',
                 title = 'ZIO: replace .tap(_ => ' .. value_text .. ') with .zipLeft(' .. value_text .. ')',
               }))
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -488,7 +499,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -502,7 +513,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -523,7 +534,7 @@ return {
                 replacement = '.zipRight(' .. value_text .. ')',
                 title = 'ZIO: replace .flatMap(_ => ' .. value_text .. ') with .zipRight(' .. value_text .. ')',
               }))
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -547,7 +558,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -559,7 +570,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -572,7 +583,7 @@ return {
                 replacement = 'as(' .. value_text .. ')',
                 title = 'ZIO: replace .map(_ => ' .. value_text .. ') with .as(' .. value_text .. ')',
               })
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -599,7 +610,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[5][1]
       local finish = matches[6][1]
@@ -611,7 +622,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -624,7 +635,7 @@ return {
                 replacement = 'ignore',
                 title = 'ZIO: replace .catchAll(_ => ' .. value_text .. ') with .ignore',
               })
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -651,7 +662,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local foreach_fun = matches[2][1]
       local collection = matches[4][1]
@@ -683,13 +694,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -711,7 +722,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local collection = matches[4][1]
       local fn_arg = matches[7][1]
@@ -734,13 +745,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -764,7 +775,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -782,13 +793,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -812,7 +823,7 @@ return {
 ) @_4
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -824,7 +835,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -837,7 +848,7 @@ return {
                 replacement = 'orElseFail(' .. value_text .. ')',
                 title = 'ZIO: replace .mapError(_ => ' .. value_text .. ') with .orElseFail(' .. value_text .. ')',
               })
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -864,7 +875,7 @@ return {
 ) 
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[6][1]
       local finish = matches[7][1]
@@ -876,7 +887,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -889,7 +900,7 @@ return {
                 replacement = 'orElseFail(' .. value_text .. ')',
                 title = 'ZIO: replace .orElse(ZIO.fail(' .. value_text .. ')) with .orElseFail(' .. value_text .. ')',
               })
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -916,7 +927,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[4][1]
       local finish = matches[5][1]
@@ -941,13 +952,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -972,7 +983,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -1014,7 +1025,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 for _, item in ipairs(results) do
                   done(item)
@@ -1022,7 +1033,7 @@ return {
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1047,7 +1058,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -1089,7 +1100,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
               if is_zlayer then
                 for _, item in ipairs(results) do
                   done(item)
@@ -1097,7 +1108,7 @@ return {
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1128,7 +1139,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[4][1]
       local finish = matches[9][1]
@@ -1149,13 +1160,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1186,7 +1197,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[5] and matches[5][1]
       local some_value = matches[6] and matches[6][1]
@@ -1210,13 +1221,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1249,7 +1260,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
 
       local either = matches[4] and matches[4][1]
@@ -1291,13 +1302,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1320,7 +1331,7 @@ return {
 ) @_8
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local duration = matches[4][1]
       local sleep_expr = matches[5][1]
@@ -1343,13 +1354,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1368,7 +1379,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local effect = matches[4][1]
       local finish = matches[5][1]
@@ -1389,13 +1400,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
               if is_zlayer then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1423,7 +1434,7 @@ return {
 ) @_9
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local layer = matches[1][1]
       local effect = matches[6][1]
       local start = matches[9][1]
@@ -1444,13 +1455,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zlayer_type, function(is_zlayer)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
               if is_zlayer then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1472,7 +1483,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local finish = matches[5][1]
 
@@ -1490,13 +1501,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1523,7 +1534,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
@@ -1541,13 +1552,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1571,7 +1582,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
@@ -1589,13 +1600,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1629,7 +1640,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[7][1]
 
@@ -1647,13 +1658,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1691,7 +1702,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1729,13 +1740,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1773,7 +1784,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1811,13 +1822,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -1924,7 +1935,7 @@ return {
 ) @_13
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local first_method = matches[2][1]
       local first_param = matches[4][1]
       local first_last = matches[5][1]
@@ -1992,7 +2003,15 @@ return {
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
-      local replacement = 'tapBoth(' .. err_side.param .. ' => ' .. err_side.body .. ', ' .. ok_side.param .. ' => ' .. ok_side.body .. ')'
+      local replacement = 'tapBoth('
+        .. err_side.param
+        .. ' => '
+        .. err_side.body
+        .. ', '
+        .. ok_side.param
+        .. ' => '
+        .. ok_side.body
+        .. ')'
 
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
@@ -2005,13 +2024,13 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -2034,7 +2053,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local condition = matches[4][1]
       local error_value = matches[6][1]
@@ -2050,20 +2069,28 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
-        title = 'ZIO: replace ZIO.cond(' .. condition_text .. ', (), ' .. error_text .. ') with ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        title = 'ZIO: replace ZIO.cond('
+          .. condition_text
+          .. ', (), '
+          .. error_text
+          .. ') with ZIO.fail('
+          .. error_text
+          .. ').unless('
+          .. condition_text
+          .. ')',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -2098,15 +2125,15 @@ return {
 
       local replacement_effect
       local replacement_condition
-      local hover_target
+      local verify_target
       if alternative_is_unit and not negated_inner then
         replacement_effect = consequence_text
         replacement_condition = condition_text
-        hover_target = consequence
+        verify_target = consequence
       elseif consequence_is_unit and negated_inner then
         replacement_effect = alternative_text
         replacement_condition = negated_inner
-        hover_target = alternative
+        verify_target = alternative
       else
         return {}
       end
@@ -2115,20 +2142,24 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
-        title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if ('
+          .. condition_text
+          .. ') effect else ZIO.unit with effect.when('
+          .. replacement_condition
+          .. ')',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }
@@ -2164,15 +2195,15 @@ return {
 
       local replacement_effect
       local replacement_condition
-      local hover_target
+      local verify_target
       if alternative_is_unit and negated_inner then
         replacement_effect = consequence_text
         replacement_condition = negated_inner
-        hover_target = consequence
+        verify_target = consequence
       elseif consequence_is_unit and not negated_inner then
         replacement_effect = alternative_text
         replacement_condition = condition_text
-        hover_target = alternative
+        verify_target = alternative
       else
         return {}
       end
@@ -2181,20 +2212,24 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
-        title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if ('
+          .. condition_text
+          .. ') effect else ZIO.unit with effect.unless('
+          .. replacement_condition
+          .. ')',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
                 done(nil)
               end
-            end, { fallback = true })
+            end)
           end,
         },
       }

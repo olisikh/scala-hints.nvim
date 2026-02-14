@@ -62,10 +62,10 @@ function M.find_deepest_node_by_type(node, type)
   return deepest_node
 end
 
----Verifies if the node has ZIO type
+---Verifies if the node resolves to the expected type via textDocument/typeDefinition
 ---@param bufnr number buffer number
----@param node TSNode|nil node to hover on
-M.hover_node_and_match = function(bufnr, node, predicate)
+---@param node TSNode|nil node to resolve
+M.type_definition_node_and_match = function(bufnr, node, predicate)
   if node == nil then
     return false
   end
@@ -77,18 +77,33 @@ M.hover_node_and_match = function(bufnr, node, predicate)
 
   local tx, rx = async.control.channel.oneshot()
 
-  vim.lsp.buf_request(bufnr, 'textDocument/hover', params, function(err, result, _, _)
+  vim.lsp.buf_request(bufnr, 'textDocument/typeDefinition', params, function(err, result, _, _)
     if err ~= nil then
-      logger.error(string.format('Request textDocument/hover to Metals LSP server has failed: %s', err))
+      logger.error(string.format('Request textDocument/typeDefinition to Metals LSP server has failed: %s', err))
       return false
     end
 
-    local is_zio = result ~= nil
-      and result.contents ~= nil
-      and result.contents.value ~= nil
-      and predicate(result.contents.value)
+    local function match_uri(item)
+      if type(item) ~= 'table' then
+        return false
+      end
+      local uri = item.targetUri or item.uri
+      return type(uri) == 'string' and uri ~= '' and predicate(uri)
+    end
 
-    tx(is_zio)
+    local is_match = false
+    if vim.tbl_islist(result) then
+      for _, item in ipairs(result) do
+        if match_uri(item) then
+          is_match = true
+          break
+        end
+      end
+    else
+      is_match = match_uri(result)
+    end
+
+    tx(is_match)
   end)
 
   return rx()

@@ -26,7 +26,7 @@ Console[IO].println("hello").void
 
 ***
 
-## 2) Replace `map(_ => c)` / `map(_ => Unit)` patterns
+## 2) Replace `map(_ => c)` patterns
 
 **Smell**
 

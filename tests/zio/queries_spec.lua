@@ -1,14 +1,14 @@
---- Tests for ZIO queries with hover verification.
---- All handlers use semantic.hover_predicate (mocked to return true).
+--- Tests for ZIO queries with type definition verification.
+--- All handlers use semantic.type_definition_predicate (mocked to return true).
 
 local H = require('tests.helpers')
 local queries = require('scala-hints.libs.zio.queries')
 
-describe('ZIO queries with hover verification', function()
+describe('ZIO queries with type definition verification', function()
   local bufnr
 
   before_each(function()
-    H.mock_hover_predicate(true)
+    H.mock_type_definition_predicate(true)
   end)
 
   after_each(function()
@@ -1181,8 +1181,8 @@ describe('ZIO queries with hover verification', function()
   -- succeed_unit
   ---------------------------------------------------------------------------
   describe('succeed_unit', function()
-    it('returns a pending thunk that resolves when hover confirms ZIO', function()
-      H.mock_hover_predicate(true)
+    it('returns a pending thunk that resolves when type definition confirms ZIO', function()
+      H.mock_type_definition_predicate(true)
       local source = [[val x = ZIO.succeed(())]]
       bufnr, root = H.parse_scala(source)
 
@@ -1203,8 +1203,8 @@ describe('ZIO queries with hover verification', function()
       })
     end)
 
-    it('emits nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('emits nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = ZIO.succeed(())]]
       bufnr, root = H.parse_scala(source)
 
@@ -1225,8 +1225,8 @@ describe('ZIO queries with hover verification', function()
   -- map_unit
   ---------------------------------------------------------------------------
   describe('map_unit', function()
-    it('matches .map(_ => ()) with ZIO hover and suggests .unit', function()
-      H.mock_hover_predicate(true)
+    it('matches .map(_ => ()) with ZIO type definition and suggests .unit', function()
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.map(_ => ())]]
       bufnr, root = H.parse_scala(source)
 
@@ -1248,7 +1248,7 @@ describe('ZIO queries with hover verification', function()
     end)
 
     it('does not match .map(x => ()) (only wildcard parameters)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.map(x => ())]]
       bufnr, root = H.parse_scala(source)
 
@@ -1258,8 +1258,8 @@ describe('ZIO queries with hover verification', function()
       assert.are.equal(0, #pending)
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.map(_ => ())]]
       bufnr, root = H.parse_scala(source)
 
@@ -1280,7 +1280,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('zip_left_value', function()
     it('matches .tap(_ => v) and suggests two replacements', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.tap(_ => sideEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1303,8 +1303,8 @@ describe('ZIO queries with hover verification', function()
       assert.is_truthy(string.find(published[2].replacement, 'zipLeft'))
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.tap(_ => sideEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1325,7 +1325,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('flat_map_value', function()
     it('matches .flatMap(_ => v) and suggests two replacements', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.flatMap(_ => otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1347,8 +1347,8 @@ describe('ZIO queries with hover verification', function()
       assert.is_truthy(string.find(published[2].replacement, 'zipRight'))
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.flatMap(_ => otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1369,7 +1369,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('zip_right_operator', function()
     it('matches .zipRight(v) and suggests *> v', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.zipRight(otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1387,8 +1387,8 @@ describe('ZIO queries with hover verification', function()
       assert.is_truthy(string.find(published[1].replacement, '*>'))
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.zipRight(otherEffect)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1409,7 +1409,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('map_value', function()
     it('matches .map(_ => v) and suggests .as(v)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.map(_ => 42)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1430,7 +1430,7 @@ describe('ZIO queries with hover verification', function()
     end)
 
     it('does not match .map(x => v) (only wildcard parameters)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.map(x => 42)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1440,8 +1440,8 @@ describe('ZIO queries with hover verification', function()
       assert.are.equal(0, #pending)
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.map(_ => 42)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1462,7 +1462,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('catch_all_unit', function()
     it('matches .catchAll(_ => ZIO.unit) and suggests .ignore', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.catchAll(_ => ZIO.unit)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1482,8 +1482,8 @@ describe('ZIO queries with hover verification', function()
       })
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.catchAll(_ => ZIO.unit)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1504,7 +1504,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('or_else_fail', function()
     it('matches .mapError(_ => v) and suggests .orElseFail(v)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.mapError(_ => newErr)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1525,7 +1525,7 @@ describe('ZIO queries with hover verification', function()
     end)
 
     it('matches .mapError(err => v) and suggests .orElseFail(v)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.mapError(err => newErr)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1545,8 +1545,8 @@ describe('ZIO queries with hover verification', function()
       })
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.mapError(_ => newErr)]]
       bufnr, root = H.parse_scala(source)
 
@@ -1567,7 +1567,7 @@ describe('ZIO queries with hover verification', function()
   ---------------------------------------------------------------------------
   describe('or_else_fail2', function()
     it('matches .orElse(ZIO.fail(v)) and suggests .orElseFail(v)', function()
-      H.mock_hover_predicate(true)
+      H.mock_type_definition_predicate(true)
       local source = [[val x = effect.orElse(ZIO.fail(newErr))]]
       bufnr, root = H.parse_scala(source)
 
@@ -1587,8 +1587,8 @@ describe('ZIO queries with hover verification', function()
       })
     end)
 
-    it('returns nothing when hover says not ZIO', function()
-      H.mock_hover_predicate(false)
+    it('returns nothing when type definition says not ZIO', function()
+      H.mock_type_definition_predicate(false)
       local source = [[val x = effect.orElse(ZIO.fail(newErr))]]
       bufnr, root = H.parse_scala(source)
 

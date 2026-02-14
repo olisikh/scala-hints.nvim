@@ -6,7 +6,7 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**-based Scala c
 
 - **35 Treesitter patterns** detecting common ZIO code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`)
 - **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
-- **Metals-aware** — hover verification ensures replacements only apply to actual ZIO types
+- **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO types
 - **Per-query severity** — configure each pattern as `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`
 - **Async** — all queries run via `plenary.async` with configurable timeouts
 
@@ -28,7 +28,7 @@ Neovim 0.11+
 ```
 
 Call `require('scala-hints').setup()` to init the plugin.
-The plugin listens on `LspAttach`, only runs on Scala buffers, and uses Metals hover (`textDocument/hover`) for type checks.
+The plugin listens on `LspAttach`, only runs on Scala buffers, and uses Metals type definition (`textDocument/typeDefinition`) for type checks.
 
 ### Configuration
 
@@ -38,10 +38,9 @@ require('scala-hints').setup({
     enabled = true, -- Enable file logging
     level = 'INFO', -- Log level: debug|info|warn|error, case-insensitive
   },
-  hover = {
-    timeouts_ms = { 400, 1000, 2000 }, -- Retry schedule for Metals textDocument/hover (ms)
-    max_inflight = 4, -- Max concurrent hover requests per buffer
-    log_misses = true, -- Log final hover misses to /tmp/scala-hints/log
+  type_definition = {
+    timeouts_ms = { 400, 1000, 2000 }, -- Retry schedule for Metals textDocument/typeDefinition (ms)
+    max_inflight = 4, -- Max concurrent requests per buffer
   },
   diagnostics = {
     default_severity = 'HINT', -- Default diagnostic severity
@@ -105,7 +104,7 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 | `actions.lua` | Resolves code actions for a given range |
 | `query.lua` | Generic query execution engine |
 | `libs/zio/queries.lua` | All 35 ZIO Treesitter query definitions and handlers |
-| `semantic.lua` | LSP hover verification and caching |
+| `semantic.lua` | LSP type definition verification and caching |
 | `utils.lua` | Async helpers, node inspection, Metals readiness polling |
 | `client.lua` | LSP client management |
 | `constants.lua` | Shared metadata (namespace name, filetype) |
@@ -114,7 +113,7 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
 - **No diagnostics?** Metals must signal readiness (`MetalsReady` / `MetalsInitialized`) before diagnostics appear.
 - **Diagnostics disappear after undo?** Reopen the buffer or trigger a save to force a refresh.
-- **False positives?** Some handlers skip Metals hover verification. Check [AGENTS.md](AGENTS.md) for details on which patterns are LSP-dependent.
+- **False positives?** Some handlers skip Metals type definition verification. Check [AGENTS.md](AGENTS.md) for details on which patterns are LSP-dependent.
 
 ## Contributing
 

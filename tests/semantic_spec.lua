@@ -1,6 +1,6 @@
 local semantic = require('scala-hints.semantic')
 
-describe('semantic.hover_predicate caching', function()
+describe('semantic.type_definition_predicate caching', function()
   local bufnr
   local original_get_clients
   local original_defer_fn
@@ -51,7 +51,7 @@ describe('semantic.hover_predicate caching', function()
     end
   end)
 
-  it('does not cache hover failures from timeouts', function()
+  it('does not cache type_definition failures from timeouts', function()
     local call_count = 0
     fake_client.request = function(_method, _params, _cb, _buf)
       call_count = call_count + 1
@@ -64,7 +64,7 @@ describe('semantic.hover_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.hover_predicate(bufnr, node, function(_value)
+    semantic.type_definition_predicate(bufnr, node, function(_value)
       return true
     end, function(result)
       table.insert(results, result)
@@ -74,7 +74,7 @@ describe('semantic.hover_predicate caching', function()
     assert.are.equal(false, results[1])
     assert.are.equal(3, call_count)
 
-    semantic.hover_predicate(bufnr, node, function(_value)
+    semantic.type_definition_predicate(bufnr, node, function(_value)
       return true
     end, function(result)
       table.insert(results, result)
@@ -85,7 +85,7 @@ describe('semantic.hover_predicate caching', function()
     assert.are.equal(6, call_count)
   end)
 
-  it('caches hover results when LSP responds', function()
+  it('caches type_definition results when LSP responds', function()
     local call_count = 0
     fake_client.request = function(_method, _params, cb, _buf)
       call_count = call_count + 1
@@ -98,7 +98,7 @@ describe('semantic.hover_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.hover_predicate(bufnr, node, function(value)
+    semantic.type_definition_predicate(bufnr, node, function(value)
       return value:find('ZIO%[') ~= nil
     end, function(result)
       table.insert(results, result)
@@ -108,7 +108,7 @@ describe('semantic.hover_predicate caching', function()
     assert.are.equal(true, results[1])
     assert.are.equal(1, call_count)
 
-    semantic.hover_predicate(bufnr, node, function(value)
+    semantic.type_definition_predicate(bufnr, node, function(value)
       return value:find('ZIO%[') ~= nil
     end, function(result)
       table.insert(results, result)
@@ -132,7 +132,7 @@ describe('semantic.hover_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.hover_predicate(bufnr, node, function(value)
+    semantic.type_definition_predicate(bufnr, node, function(value)
       return value:find('ZIO%[') ~= nil
     end, function(result)
       table.insert(results, result)
@@ -142,7 +142,7 @@ describe('semantic.hover_predicate caching', function()
     assert.are.equal(false, results[1])
     assert.are.equal(1, call_count)
 
-    semantic.hover_predicate(bufnr, node, function(value)
+    semantic.type_definition_predicate(bufnr, node, function(value)
       return value:find('ZIO%[') ~= nil
     end, function(result)
       table.insert(results, result)
