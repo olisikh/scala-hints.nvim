@@ -29,7 +29,6 @@
 | :--- | :--- |
 | `init.lua` | Entry point; registers namespace, Metals-gated autocommands, code-action wrapper |
 | `diagnostics.lua` | Orchestrates diagnostic collection by running Treesitter queries |
-| `diagnostics_config.lua` | Per-query severity configuration (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`) |
 | `actions.lua` | Resolves code actions for a given range |
 | `query.lua` | Generic Treesitter query execution engine |
 | `libs/zio/queries.lua` | All 35 ZIO query definitions and handlers |

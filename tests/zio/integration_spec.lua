@@ -17,7 +17,7 @@ local function make_diagnostic(result)
     end_lnum = diagnostic.row,
     end_col = diagnostic.end_col,
     message = result.title,
-    source = constants.source,
+    source = constants.plugin_name,
     severity = vim.diagnostic.severity.HINT,
   }
 end
@@ -52,7 +52,7 @@ local function assert_diagnostic_shape(diag)
   assert(diag.end_lnum ~= nil, 'diagnostic missing end_lnum')
   assert(diag.end_col ~= nil, 'diagnostic missing end_col')
   assert(diag.message ~= nil, 'diagnostic missing message')
-  assert.are.equal(constants.source, diag.source)
+  assert.are.equal(constants.plugin_name, diag.source)
   assert.are.equal(vim.diagnostic.severity.HINT, diag.severity)
 end
 

@@ -1,19 +1,24 @@
 local constants = require('scala-hints.constants')
 local client = require('scala-hints.client')
 local semantic = require('scala-hints.semantic')
-local diagnostics_config = require('scala-hints.diagnostics_config')
-local logger = require('scala-hints.logger').new('init')
+local diagnostics = require('scala-hints.diagnostics')
+local actions = require('scala-hints.actions')
+local logger = require('scala-hints.logger')
 
 local M = {}
 
 --- Function to instantiate the plugin
----@param _opts table|nil options
+---@param opts table|nil options
 ---@return table plugin object
-M.setup = function(_opts)
+M.setup = function(opts)
+  logger.configure(opts)
+
+  logger = logger.new('init')
   logger.info('Module initializing')
 
-  semantic.configure(_opts)
-  diagnostics_config.configure(_opts)
+  semantic.configure(opts)
+  diagnostics.configure(opts)
+  actions.configure(opts)
 
   -- Listen for Metals attaching to Scala buffers.
   -- When Metals is ready we start (or reuse) our in-process LSP client
@@ -29,7 +34,7 @@ M.setup = function(_opts)
       end
 
       -- Only act on Scala buffers
-      if vim.bo[bufnr].filetype ~= constants.lang then
+      if vim.bo[bufnr].filetype ~= "scala" then
         return
       end
 
@@ -44,7 +49,6 @@ M.setup = function(_opts)
       client.start(bufnr)
     end,
   })
-
 
   logger.info('Plugin initialized')
   return M

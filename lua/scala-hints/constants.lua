@@ -1,6 +1,4 @@
 return {
-  source = 'scala-hints',
-  diagnostic_namespace = 'scala-hints',
-  lang = 'scala',
+  plugin_name = 'scala-hints',
   client_name = 'scala-hints',
 }

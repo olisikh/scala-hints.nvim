@@ -2,11 +2,24 @@ local async = require('plenary.async')
 local query = require('scala-hints.query')
 local utils = require('scala-hints.utils')
 local libs = require('scala-hints.libs')
-local constants = require('scala-hints.constants')
-
-local source = constants.source
+local logger = require('scala-hints.logger').new('actions')
 
 local M = {}
+
+local settings = {
+  excluded_libs = {},
+}
+
+function M.configure(opts)
+  local actions = opts and opts.actions or nil
+  if not actions then
+    return
+  end
+
+  if type(actions.excluded_libs) == 'table' then
+    settings.excluded_libs = actions.excluded_libs
+  end
+end
 
 ---Transform a query result into an LSP code action shape
 ---@param result table query handler result with title, action, and replacement
@@ -30,7 +43,7 @@ function M.resolve_actions(bufnr, start_line, end_line, done)
     local root = tree:root()
 
     local queries = {}
-    for query_name, query_def in pairs(libs.get_all_queries()) do
+    for query_name, query_def in pairs(libs.get_all_queries(settings.excluded_libs)) do
       table.insert(
         queries,
         async.wrap(
@@ -55,7 +68,7 @@ function M.resolve_actions(bufnr, start_line, end_line, done)
     if ok then
       done(utils.flatten_array(actions))
     else
-      vim.notify(string.format('[%s]: Failed to collect actions: %s', source, actions), vim.log.levels.WARN)
+      logger.warn(string.format('Failed to collect actions: %s', actions))
       done(nil)
     end
   end)
