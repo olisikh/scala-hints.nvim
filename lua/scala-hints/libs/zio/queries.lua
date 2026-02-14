@@ -33,6 +33,43 @@ local function parse_query(query)
   return ts.query.parse('scala', query)
 end
 
+local function normalize_condition_text(text)
+  local trimmed = vim.trim(text)
+  if trimmed:sub(1, 1) == '(' and trimmed:sub(-1) == ')' then
+    trimmed = vim.trim(trimmed:sub(2, -2))
+  end
+  return trimmed
+end
+
+local function strip_negation(text)
+  local trimmed = vim.trim(text)
+  if trimmed:sub(1, 1) ~= '!' then
+    return nil
+  end
+  local inner = vim.trim(trimmed:sub(2))
+  if inner:sub(1, 1) == '(' and inner:sub(-1) == ')' then
+    inner = vim.trim(inner:sub(2, -2))
+  end
+  return inner
+end
+
+local function unwrap_single_expression_block(bufnr, node)
+  if node then
+    local node_type = node:type()
+    if node_type == 'block' or node_type == 'indented_block' then
+      if node:named_child_count() == 1 then
+        local child = node:named_child(0)
+        return utils.get_node_text(bufnr, child)
+      end
+    end
+  end
+  return utils.get_node_text(bufnr, node)
+end
+
+local function is_zio_unit_text(text)
+  return vim.trim(text) == 'ZIO.unit'
+end
+
 return {
 
   -- ZIO.succeed(()) ~> ZIO.unit
@@ -1634,77 +1671,138 @@ return {
     end,
   },
 
+  -- ZIO.cond(cond, (), err) ~> ZIO.fail(err).unless(cond)
+  zio_cond = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (identifier) @_1 (#eq? @_1 "ZIO")
+    field: (identifier) @_2 (#eq? @_2 "cond")
+  ) @_3
+  arguments: (arguments
+    (_) @_4
+    (unit) @_5
+    (_) @_6
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[3][1]
+      local condition = matches[4][1]
+      local error_value = matches[6][1]
+      local finish = matches[7][1]
+
+      local start_row, start_col, _, _ = start:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local error_text = utils.get_node_text(bufnr, error_value)
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+          title = 'ZIO: replace ZIO.cond(' .. condition_text .. ', (), ' .. error_text .. ') with ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        },
+      }
+    end,
+  },
+
   -- if (condition) effect else ZIO.unit ~> effect.when(condition)
   when = {
     query = parse_query([[
 (if_expression
   condition: (_) @_1
   consequence: (_) @_2
-  alternative: (field_expression
-    value: (identifier) @_3 (#eq? @_3 "ZIO")
-    field: (identifier) @_4 (#eq? @_4 "unit")
-  ) @_5
+  alternative: (_) @_3
 ) @_6
 ]]),
     handler = function(bufnr, matches)
       local condition = matches[1][1]
       local consequence = matches[2][1]
-      local start = matches[5][1]
-      local finish = matches[6][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
 
-      local start_row, start_col, _, _ = start:range()
-      local _, _, end_row, end_col = finish:range()
+      local start_row, start_col, end_row, end_col = node:range()
 
-      local condition_text = utils.get_node_text(bufnr, condition)
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_zio_unit_text(consequence_text)
+      local alternative_is_unit = is_zio_unit_text(alternative_text)
+
+      local replacement_effect
+      local replacement_condition
+      if alternative_is_unit and not negated_inner then
+        replacement_effect = consequence_text
+        replacement_condition = condition_text
+      elseif consequence_is_unit and negated_inner then
+        replacement_effect = alternative_text
+        replacement_condition = negated_inner
+      else
+        return {}
+      end
 
       return {
         {
           diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
           action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.when(' .. condition_text .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. condition_text .. ')',
+          replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
+          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. replacement_condition .. ')',
         },
       }
     end,
   },
 
   -- if (!condition) effect else ZIO.unit ~> effect.unless(condition)
+  -- if (condition) ZIO.unit else effect ~> effect.unless(condition)
   unless = {
     query = parse_query([[
 (if_expression
   condition: (_) @_1
   consequence: (_) @_2
-  alternative: (field_expression
-    value: (identifier) @_3 (#eq? @_3 "ZIO")
-    field: (identifier) @_4 (#eq? @_4 "unit")
-  ) @_5
+  alternative: (_) @_3
 ) @_6
 ]]),
     handler = function(bufnr, matches)
       local condition = matches[1][1]
-      local start = matches[5][1]
-      local finish = matches[6][1]
+      local consequence = matches[2][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
 
-      local start_row, start_col, _, _ = start:range()
-      local _, _, end_row, end_col = finish:range()
+      local start_row, start_col, end_row, end_col = node:range()
 
-      local condition_text = utils.get_node_text(bufnr, condition)
-      local normalized = condition_text:gsub('%s+', '')
-      if not (normalized:sub(1, 2) == '(!' or normalized:sub(1, 1) == '!') then
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_zio_unit_text(consequence_text)
+      local alternative_is_unit = is_zio_unit_text(alternative_text)
+
+      local replacement_effect
+      local replacement_condition
+      if alternative_is_unit and negated_inner then
+        replacement_effect = consequence_text
+        replacement_condition = negated_inner
+      elseif consequence_is_unit and not negated_inner then
+        replacement_effect = alternative_text
+        replacement_condition = condition_text
+      else
         return {}
       end
-
-      local inner = condition_text
-      inner = inner:gsub('^%s*%(!', '')
-      inner = inner:gsub('^%s*!', '')
-      inner = inner:gsub('%)%s*$', '')
 
       return {
         {
           diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
           action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.unless(' .. inner .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. inner .. ')',
+          replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
+          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. replacement_condition .. ')',
         },
       }
     end,

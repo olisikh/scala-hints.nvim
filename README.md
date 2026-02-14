@@ -8,7 +8,7 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 | --- | --- |
 | **Status** | Sandbox/learning project—use at your own risk. |
 | **Lines of Lua** | 1,557 total; `lua/scala-hints/query.lua` is the pattern-heavy core (~1,135 lines). |
-| **Test Coverage** | Plenary.busted suites in `tests/` (current: 169 passing). |
+| **Test Coverage** | Plenary.busted suites in `tests/` (current: 171 passing). |
 | **Dependencies** | `plenary.nvim`, `nvim-treesitter`, `nvim-metals`. |
 | **Primary Goal** | Detect common ZIO code smells and offer idiomatic replacements (e.g., `.map(_ => ())` → `.unit`). |
 
@@ -17,7 +17,7 @@ Opinionated Neovim diagnostics + quickfix helpers for **ZIO**-based Scala code. 
 - **Native diagnostics & code actions**: Hooks Neovim autocommands and `vim.lsp.handlers` to reuse the same query list, pushing results through `vim.diagnostic.set()` and the native code-action plumbing.
 - **Metals-aware validation**: `utils.hover_node_and_match` inspects the hover response to ensure replacements apply to actual ZIO nodes.
 - **Async humble flow**: Every query runs via `plenary.async`; `run_or_timeout` and dedicated timeouts (10s for Metals readiness, 10s for actions, 30s for diagnostics) keep prompts responsive.
-- **Pattern catalog**: 34 Treesitter patterns implemented across constructors, combinators, error handling, type aliases, and `Option`/`Either` helpers—full details live in `AGENTS.md`.
+- **Pattern catalog**: 35 Treesitter patterns implemented across constructors, combinators, error handling, type aliases, and `Option`/`Either` helpers—full details live in `AGENTS.md`.
 
 ## Architecture Overview
 
@@ -61,7 +61,7 @@ vim.diagnostic.set(...)    vim.lsp.handlers['textDocument/codeAction']
 Implemented optimizations:
 - Constructors & units: `succeed_unit`, `map_unit`, `as_unit`, `zip_right_unit`, `zip_right_value`
 - Combinators: `zip_left_value`, `zip_right_operator`, `flat_map_value`, `map_value`, `zio_foreach`, `foreach_par_n`, `fold_cause_ignore`
-- Error handling: `zio_die`, `catch_all_unit`, `or_else_fail`, `or_else_fail2`, `or_else_fail3`
+- Error handling: `zio_die`, `zio_cond`, `catch_all_unit`, `or_else_fail`, `or_else_fail2`, `or_else_fail3`
 - Type shorthands: `zio_type`, `zlayer_type`
 - Optional/either helpers: `zio_none`, `zio_some`, `zio_either`
 - Timing & layers: `delay`, `to_layer`, `provide_layer`
@@ -149,8 +149,8 @@ Per [TODO.md](TODO.md) and the `AGENTS.md` plan:
 
 - **Total LOC**: 1,557 lines across six Lua modules.
 - **Query core**: `lua/scala-hints/query.lua` carries ~1,135 lines focused on Treesitter logic.
-- **Patterns**: 34 implemented hints.
-- **Tests**: Plenary.busted suite in `tests/` (current: 169 passing).
+- **Patterns**: 35 implemented hints.
+- **Tests**: Plenary.busted suite in `tests/` (current: 171 passing).
 - **Limitations**: Strict reliance on literal `ZIO` identifiers, no caching, possible false positives where handlers skip Metals validation, and the entire plugin is still a learning sandbox.
 
 ## Troubleshooting

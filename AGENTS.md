@@ -96,6 +96,7 @@ The following 35 patterns are fully implemented in [lua/scala-hints/libs/zio/que
 | `flat_map_value` | `.flatMap(_ => v)` | `.zipRight` | ✓ | ✅ |
 | `map_value` | `.map(_ => v)` | `.as(v)` | ✓ | ✅ |
 | `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` | ✓ | ✅ |
+| `zio_cond` | `ZIO.cond(cond, (), err)` | `ZIO.fail(err).unless(cond)` | ✓ | ✅ |
 | `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach` | ✓ | ✅ |
 | `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` | ✓ | ✅ |
 | `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` | ✓ | ✅ |

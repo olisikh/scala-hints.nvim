@@ -28,10 +28,11 @@ describe('libs registry', function()
       end
     end)
 
-    it('contains all 34 known ZIO queries', function()
+    it('contains all 35 known ZIO queries', function()
       local expected = {
         'zio/succeed_unit',
         'zio/zio_die',
+        'zio/zio_cond',
         'zio/map_unit',
         'zio/zip_right_unit',
         'zio/as_unit',

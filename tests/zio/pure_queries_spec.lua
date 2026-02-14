@@ -881,6 +881,32 @@ describe('ZIO pure queries (no LSP)', function()
   ---------------------------------------------------------------------------
   -- when
   ---------------------------------------------------------------------------
+  describe('zio_cond', function()
+    it('matches ZIO.cond(cond, (), err) and suggests ZIO.fail(err).unless(cond)', function()
+      local source = [[val x = ZIO.cond(check, (), "fail")]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.zio_cond)
+
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'ZIO.fail("fail").unless(check)',
+      })
+    end)
+
+    it('does not match ZIO.cond when success is not unit', function()
+      local source = [[val x = ZIO.cond(check, 1, "fail")]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.zio_cond)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- when
+  ---------------------------------------------------------------------------
   describe('when', function()
     it('matches if (condition) effect else ZIO.unit and suggests when', function()
       local source = [[val x = if (check) effect else ZIO.unit]]
@@ -891,7 +917,31 @@ describe('ZIO pure queries (no LSP)', function()
       assert.are.equal(0, #pending)
       assert.are.equal(1, #ready)
       H.assert_result(ready[1], {
-        replacement = '.when((check))',
+        replacement = 'effect.when(check)',
+      })
+    end)
+
+    it('matches block consequence and suggests when', function()
+      local source = [[val x = if (cond) { succeed } else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.when(cond)',
+      })
+    end)
+
+    it('matches negated condition with unit consequence and suggests when', function()
+      local source = [[val x = if (!cond) ZIO.unit else succeed]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.when(cond)',
       })
     end)
 
@@ -910,6 +960,30 @@ describe('ZIO pure queries (no LSP)', function()
       local ready, _ = H.run_handler(bufnr, root, queries.when)
       assert.are.equal(0, #ready)
     end)
+
+    it('matches Scala 3 if-then-else and suggests when', function()
+      local source = [[val x = if check then succeed else ZIO.unit]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.when(check)',
+      })
+    end)
+
+    it('matches Scala 3 negated condition with unit consequence and suggests when', function()
+      local source = [[val x = if !cond then ZIO.unit else succeed]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.when)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.when(cond)',
+      })
+    end)
   end)
 
   ---------------------------------------------------------------------------
@@ -925,7 +999,7 @@ describe('ZIO pure queries (no LSP)', function()
       assert.are.equal(0, #pending)
       assert.are.equal(1, #ready)
       H.assert_result(ready[1], {
-        replacement = '.unless(check)',
+        replacement = 'effect.unless(check)',
       })
     end)
 
@@ -937,7 +1011,31 @@ describe('ZIO pure queries (no LSP)', function()
 
       assert.are.equal(1, #ready)
       H.assert_result(ready[1], {
-        replacement = '.unless((check))',
+        replacement = 'effect.unless(check)',
+      })
+    end)
+
+    it('matches if (condition) ZIO.unit else effect and suggests unless', function()
+      local source = [[val x = if (cond) ZIO.unit else succeed]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.unless(cond)',
+      })
+    end)
+
+    it('matches block alternative and suggests unless', function()
+      local source = [[val x = if (cond) ZIO.unit else { succeed }]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.unless(cond)',
       })
     end)
 
@@ -955,6 +1053,18 @@ describe('ZIO pure queries (no LSP)', function()
 
       local ready, _ = H.run_handler(bufnr, root, queries.unless)
       assert.are.equal(0, #ready)
+    end)
+
+    it('matches Scala 3 if-then-else with unit consequence and suggests unless', function()
+      local source = [[val x = if cond then ZIO.unit else succeed]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, _ = H.run_handler(bufnr, root, queries.unless)
+
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'succeed.unless(cond)',
+      })
     end)
   end)
 end)

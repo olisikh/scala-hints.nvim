@@ -1,6 +1,6 @@
 # TODO: IntelliJ ZIO Plugin Parity Roadmap
 
-## Completed (34 patterns - ✅)
+## Completed (35 patterns - ✅)
 - ✅ `.unit` (from `.succeed(())`, `.map(_ => ())`, `.as(())`)
 - ✅ `.ignore` (from `.catchAll(_ => ZIO.unit)`, `.foldCause(...)`)
 - ✅ `.as` / `.zipRight` (from `*> ZIO.succeed(v)`, `.flatMap(_ => v)`, `.map(_ => v)`)
@@ -8,6 +8,7 @@
 - ✅ `ZIO.none` / `ZIO.some` / `ZIO.left` / `ZIO.right`
 - ✅ `ZIO.foreach` (from `ZIO.collectAll(coll.map(f))`)
 - ✅ `ZIO.die` (from `ZIO.fail(ex).orDie`)
+- ✅ `ZIO.cond(cond, (), err)` → `ZIO.fail(err).unless(cond)`
 - ✅ `.orElseFail` (from `.mapError(...)`, `.orElse(ZIO.fail(...))`, `.flatMapError(...)`)
 - ✅ `ZIO.succeed(())` → `ZIO.unit`
 - ✅ Type aliases: `ZIO[Any, Nothing, A]` → `UIO[A]`, `ZLayer[Any, Nothing, A]` → `ULayer[A]`
