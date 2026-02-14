@@ -9,21 +9,14 @@ local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
 --- Basic CE type detection: checks for IO/Resource type patterns in definition URI
-local function is_ce_type(uri_value)
+local function is_cats_io_type(uri_value)
   if not uri_value or type(uri_value) ~= 'string' then
     return false
   end
-  local lower = uri_value:lower()
-  if lower:find('cats/effect') ~= nil or lower:find('cats%-effect') ~= nil then
-    return true
-  end
-  return string.find(uri_value, 'cats%.effect%.IO%[') ~= nil
-    or string.find(uri_value, 'cats%.effect%.Resource%[') ~= nil
-    or string.find(uri_value, 'cats%.effect%.kernel%.Resource%[') ~= nil
-    or string.find(uri_value, 'cats%.effect%.IO') ~= nil
-    or string.find(uri_value, 'cats%.effect%.Resource') ~= nil
-    or string.find(uri_value, 'object IO') ~= nil
-    or string.find(uri_value, 'object Resource') ~= nil
+
+  return string.find(uri_value, '/cats/effect/IO.scala') ~= nil
+    or string.find(uri_value, '/cats/effect/Resource.scala') ~= nil
+    or string.find(uri_value, '/cats/effect/kernel/Resource.scala') ~= nil
 end
 
 local function parse_query(query)
@@ -191,7 +184,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -233,7 +226,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if not is_ce then
                 done(nil)
                 return
@@ -283,7 +276,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if not is_ce then
                 done(nil)
                 return
@@ -348,14 +341,18 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = replacement_effect .. '.whenA(' .. replacement_condition .. ')',
-        title = 'CE: replace if (' .. condition_text .. ') effect else IO.unit with effect.whenA(' .. replacement_condition .. ')',
+        title = 'CE: replace if ('
+          .. condition_text
+          .. ') effect else IO.unit with effect.whenA('
+          .. replacement_condition
+          .. ')',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -414,14 +411,18 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = replacement_effect .. '.unlessA(' .. replacement_condition .. ')',
-        title = 'CE: replace if (' .. condition_text .. ') effect else IO.unit with effect.unlessA(' .. replacement_condition .. ')',
+        title = 'CE: replace if ('
+          .. condition_text
+          .. ') effect else IO.unit with effect.unlessA('
+          .. replacement_condition
+          .. ')',
       }
 
       return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -490,7 +491,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -562,7 +563,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -634,7 +635,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -699,7 +700,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, io_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -753,7 +754,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, io_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -810,7 +811,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, io_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -881,7 +882,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -943,7 +944,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -993,7 +994,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, effect, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, effect, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1075,7 +1076,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, effect, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, effect, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1151,7 +1152,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, fa, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, fa, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1230,7 +1231,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, fa, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, fa, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1279,7 +1280,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1328,7 +1329,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1388,7 +1389,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, effect, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, effect, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1464,7 +1465,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, effect, is_ce_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, effect, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else

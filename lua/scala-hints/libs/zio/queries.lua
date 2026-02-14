@@ -16,24 +16,10 @@ local function is_zio_type(uri_value)
   if not uri_value or type(uri_value) ~= 'string' then
     return false
   end
-  local lower = uri_value:lower()
-  if lower:find('/zio/') ~= nil or lower:find('!/zio/') ~= nil then
-    return true
-  end
-  -- Check for ZIO type patterns: ZIO[, UIO[, IO[, etc.
-  return string.find(uri_value, 'zio%.ZIO%[') ~= nil
-    or string.find(uri_value, ': ZIO') ~= nil
-    or string.find(uri_value, 'object ZIO') ~= nil
-    or string.find(uri_value, 'zio%.UIO%[') ~= nil
-    or string.find(uri_value, 'zio%.URIO%[') ~= nil
-    or string.find(uri_value, 'zio%.RIO%[') ~= nil
-    or string.find(uri_value, 'zio%.Task%[') ~= nil
-    or string.find(uri_value, 'zio%.Managed%[') ~= nil
-    or string.find(uri_value, 'zio%.stream%.ZStream%[') ~= nil
-    or string.find(uri_value, 'zio%.IO%[') ~= nil
-    or string.find(uri_value, 'zio%.UIO%[') ~= nil
-    or string.find(uri_value, 'zio%.URIO%[') ~= nil
-    or string.find(uri_value, 'zio%.RIO%[') ~= nil
+
+  return string.find(uri_value, '/zio/ZIO') ~= nil
+    or string.find(uri_value, '/zio/package%.scala') ~= nil
+    or string.find(uri_value, '/zio/stream/ZStream') ~= nil
 end
 
 --- Robust ZLayer type detection: checks for ZLayer type patterns in definition URI
@@ -41,18 +27,8 @@ local function is_zlayer_type(uri_value)
   if not uri_value or type(uri_value) ~= 'string' then
     return false
   end
-  local lower = uri_value:lower()
-  if lower:find('/zio/') ~= nil or lower:find('!/zio/') ~= nil then
-    return true
-  end
-  return string.find(uri_value, 'zio%.ZLayer%[') ~= nil
-    or string.find(uri_value, ': ZLayer') ~= nil
-    or string.find(uri_value, 'object ZLayer') ~= nil
-    or string.find(uri_value, 'zio%.ULayer%[') ~= nil
-    or string.find(uri_value, 'zio%.TaskLayer%[') ~= nil
-    or string.find(uri_value, 'zio%.URLayer%[') ~= nil
-    or string.find(uri_value, 'zio%.RLayer%[') ~= nil
-    or string.find(uri_value, 'zio%.Layer%[') ~= nil
+
+  return string.find(uri_value, '/zio/ZLayer') ~= nil or string.find(uri_value, '/zio/package%.scala') ~= nil
 end
 
 local function parse_query(query)

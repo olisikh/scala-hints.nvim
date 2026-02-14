@@ -268,7 +268,8 @@ function M.type_definition_predicate(bufnr, node, predicate, cb)
 
   -- Retarget: when the node is the receiver in a field_expression (e.g. `expr.map`),
   -- resolve typeDefinition on the method identifier (`map`) instead of the receiver.
-  -- This ensures Metals returns the return type (e.g. IO) rather than the receiver type (e.g. Console).
+  -- This ensures Metals returns the definition of the method (e.g. ZIO#map in zio/ZIO.scala)
+  -- rather than the type of the receiver itself (which could be a non-ZIO/CE type).
   local target = node
   local parent = node:parent()
   if parent and parent:type() == 'field_expression' then
