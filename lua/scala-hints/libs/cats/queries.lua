@@ -1,0 +1,402 @@
+--- Cats (tagless-final) Treesitter query definitions and handlers
+---
+--- Each entry has:
+---   query   = parsed Treesitter query (TSQuery)
+---   handler = function(bufnr, matches) -> results table
+
+local utils = require('scala-hints.utils')
+local evidence = require('scala-hints.cats.evidence')
+local ts = vim.treesitter
+
+local function parse_query(query)
+  return ts.query.parse('scala', query)
+end
+
+local function normalize_condition_text(text)
+  local trimmed = vim.trim(text)
+  if trimmed:sub(1, 1) == '(' and trimmed:sub(-1) == ')' then
+    trimmed = vim.trim(trimmed:sub(2, -2))
+  end
+  return trimmed
+end
+
+local function strip_negation(text)
+  local trimmed = vim.trim(text)
+  if trimmed:sub(1, 1) ~= '!' then
+    return nil
+  end
+  local inner = vim.trim(trimmed:sub(2))
+  if inner:sub(1, 1) == '(' and inner:sub(-1) == ')' then
+    inner = vim.trim(inner:sub(2, -2))
+  end
+  return inner
+end
+
+local function unwrap_single_expression_block(bufnr, node)
+  if node then
+    local node_type = node:type()
+    if node_type == 'block' or node_type == 'indented_block' then
+      if node:named_child_count() == 1 then
+        local child = node:named_child(0)
+        return utils.get_node_text(bufnr, child)
+      end
+    end
+  end
+  return utils.get_node_text(bufnr, node)
+end
+
+local function collect_case_clauses(node, out)
+  out = out or {}
+  if not node then
+    return out
+  end
+  if node:type() == 'case_clause' then
+    table.insert(out, node)
+    return out
+  end
+  for child in node:iter_children() do
+    collect_case_clauses(child, out)
+  end
+  return out
+end
+
+local function extract_case_map(bufnr, match_node)
+  local cases = collect_case_clauses(match_node, {})
+  local case_map = {}
+  for _, case_node in ipairs(cases) do
+    local text = utils.get_node_text(bufnr, case_node)
+    local ctor, param, body = text:match('case%s+([%w_]+)%s*%(([%w_]+)%)%s*=>%s*([%s%S]+)')
+    if not ctor then
+      ctor, body = text:match('case%s+([%w_]+)%s*=>%s*([%s%S]+)')
+      param = '_'
+    end
+    if ctor and body then
+      case_map[ctor] = { param = param, body = vim.trim(body) }
+    end
+  end
+  return case_map
+end
+
+local function contains_identifier(text, ident)
+  if not text or not ident or ident == '' then
+    return false
+  end
+  local escaped = vim.pesc(ident)
+  return text:find('%f[%w_]' .. escaped .. '%f[^%w_]') ~= nil
+end
+
+local function is_tagless_unit_text(text)
+  local trimmed = vim.trim(text or '')
+  if trimmed == '' then
+    return false
+  end
+
+  if trimmed == 'F.unit' then
+    return true
+  end
+
+  if trimmed:match('%.unit$') then
+    if trimmed:match('Applicative%[') or trimmed:match('Monad%[') or trimmed:match('Sync%[') then
+      return true
+    end
+  end
+
+  return false
+end
+
+return {
+  -- fa.map(_ => ()) ~> fa.void
+  map_unit = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "map")
+  )
+  (arguments
+    (lambda_expression
+      parameters: (wildcard)
+      (unit)
+    )
+  ) @_3
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local finish = matches[3][1]
+
+      if not evidence.has_capability(bufnr, target, 'Functor') then
+        return {}
+      end
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'void',
+          title = 'Cats: replace .map(_ => ()) with .void',
+        },
+      }
+    end,
+  },
+
+  -- fa.map(_ => value) ~> fa.as(value)
+  map_value = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "map")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (wildcard)
+      (_) @_3 (#not-eq? @_3 "()")
+    )
+  ) @_4
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
+
+      if not evidence.has_capability(bufnr, target, 'Functor') then
+        return {}
+      end
+
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+      local value_text = utils.get_node_text(bufnr, value)
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = 'as(' .. value_text .. ')',
+          title = 'Cats: replace .map(_ => ' .. value_text .. ') with .as(' .. value_text .. ')',
+        },
+      }
+    end,
+  },
+
+  -- fa.flatMap(_ => fb) ~> fa *> fb
+  flat_map_value = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (wildcard) (_) @_3
+    )
+  ) @_4
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[1][1]
+      local target = matches[2][1]
+      local value = matches[3][1]
+      local finish = matches[4][1]
+
+      if not evidence.has_capability(bufnr, target, 'Apply') then
+        return {}
+      end
+
+      local _, _, start_row, start_col = start:range()
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local value_text = utils.get_node_text(bufnr, value)
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = ' *> ' .. value_text,
+          title = 'Cats: replace .flatMap(_ => ' .. value_text .. ') with *> ' .. value_text,
+        },
+      }
+    end,
+  },
+
+  -- if (condition) effect else F.unit ~> effect.whenA(condition)
+  when_a = {
+    query = parse_query([[
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (_) @_3
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local consequence = matches[2][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
+
+      local start_row, start_col, end_row, end_col = node:range()
+
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_tagless_unit_text(consequence_text)
+      local alternative_is_unit = is_tagless_unit_text(alternative_text)
+
+      local replacement_effect
+      local replacement_condition
+      local verify_target
+      if alternative_is_unit and not negated_inner then
+        replacement_effect = consequence_text
+        replacement_condition = condition_text
+        verify_target = consequence
+      elseif consequence_is_unit and negated_inner then
+        replacement_effect = alternative_text
+        replacement_condition = negated_inner
+        verify_target = alternative
+      else
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, verify_target, 'Applicative') then
+        return {}
+      end
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement_effect .. '.whenA(' .. replacement_condition .. ')',
+          title = 'Cats: replace if (...) effect else F.unit with effect.whenA(...)',
+        },
+      }
+    end,
+  },
+
+  -- fb.flatMap(b => if (b) fa else fc) ~> fb.ifM(fa, fc)
+  if_m = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (if_expression
+        condition: (_) @_4
+        consequence: (_) @_5
+        alternative: (_) @_6
+      )
+    )
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local condition = matches[4][1]
+      local consequence = matches[5][1]
+      local alternative = matches[6][1]
+      local finish = matches[7][1]
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      if condition_text ~= param_text then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, target, 'Monad') then
+        return {}
+      end
+
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = 'ifM(' .. consequence_text .. ', ' .. alternative_text .. ')',
+          title = 'Cats: replace .flatMap(b => if (b) ...) with .ifM',
+        },
+      }
+    end,
+  },
+
+  -- fa.attempt.flatMap { case Right(a) => F.pure(a); case Left(e) => F.pure(default) }
+  --   ~> fa.handleError(_ => default) or fa.handleErrorWith(e => F.pure(default(e)))
+  handle_error = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "attempt")
+    ) @_3
+    field: (identifier) @_4 (#eq? @_4 "flatMap")
+  )
+  arguments: (_) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local attempt_id = matches[2][1]
+      local match_node = matches[5][1]
+
+      if not evidence.has_capability(bufnr, attempt_id, 'MonadError') then
+        return {}
+      end
+
+      local case_map = extract_case_map(bufnr, match_node)
+
+      local right = case_map.Right
+      local left = case_map.Left
+      if not (right and left) then
+        return {}
+      end
+
+      local right_prefix, right_pure = right.body:match('^(.-)%.pure%((.+)%)$')
+      if not right_pure or vim.trim(right_pure) ~= right.param then
+        return {}
+      end
+
+      local left_prefix, left_pure = left.body:match('^(.-)%.pure%((.+)%)$')
+      if not left_pure then
+        return {}
+      end
+
+      local pure_prefix = left_prefix ~= '' and left_prefix or right_prefix
+
+      local replacement
+      if left.param ~= '_' and contains_identifier(left_pure, left.param) and pure_prefix then
+        replacement = 'handleErrorWith(' .. left.param .. ' => ' .. pure_prefix .. '.pure(' .. left_pure .. '))'
+      else
+        replacement = 'handleError(_ => ' .. left_pure .. ')'
+      end
+
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      dstart_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = match_node:range()
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = '.' .. replacement,
+          title = 'Cats: replace .attempt.flatMap with .handleError',
+        },
+      }
+    end,
+  },
+}

@@ -11,6 +11,7 @@ local M = {}
 --- Add new libraries here.
 local supported_libs = {
   'zio',
+  'cats',
   'cats-effect',
 }
 

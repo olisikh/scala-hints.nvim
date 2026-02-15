@@ -1,12 +1,13 @@
 # scala-hints.nvim
 
-Opinionated Neovim diagnostics + quickfix code actions for **ZIO** and **Cats-Effect (IO/Resource)** Scala code. Uses Treesitter for AST matching, Metals LSP for type verification, and native Neovim diagnostics / code-action hooks.
+Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code. Uses Treesitter for AST matching, Metals LSP for type verification, and native Neovim diagnostics / code-action hooks.
 
 ## Features
 
-- **ZIO (35) + Cats-Effect (36) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`)
+- **ZIO (35) + Cats-Effect (36) + Cats tagless-final (6) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
 - **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
 - **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO or Cats-Effect types
+- **Evidence-gated** — Cats tagless-final patterns verify typeclass evidence (Functor/Monad/etc.) in the enclosing `def` signature
 - **Per-query severity** — configure each pattern as `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`
 - **Async** — all queries run via `plenary.async` with configurable timeouts
 
@@ -49,10 +50,10 @@ require('scala-hints').setup({
       ['zio/zip_right_operator'] = 'OFF',
       ['zio/zio_die'] = 'WARN', -- Elevate severity for a specific diagnostic
     },
-    excluded_libs = {}, -- Exclude libraries from diagnostics (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
+    excluded_libs = {}, -- Exclude libraries from diagnostics (performance), e.g. { "zio", "cats-effect", "cats" }
   },
   actions = {
-    excluded_libs = {}, -- Exclude libraries from code actions (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
+    excluded_libs = {}, -- Exclude libraries from code actions (performance), e.g. { "zio", "cats-effect", "cats" }
   },
 })
 ```
@@ -96,6 +97,19 @@ Cats-Effect hints cover common IO/Resource idioms and include:
 
 Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
+### Cats Tagless-Final (F[_], 6 patterns)
+
+Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (context bounds / implicit / using) in the enclosing `def`:
+
+| Pattern | Detection | Replacement | Evidence |
+| --- | --- | --- | --- |
+| `map_unit` | `fa.map(_ => ())` | `fa.void` | Functor |
+| `map_value` | `fa.map(_ => v)` | `fa.as(v)` | Functor |
+| `flat_map_value` | `fa.flatMap(_ => fb)` | `fa *> fb` | Apply |
+| `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` | Applicative |
+| `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` | Monad |
+| `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError` | MonadError |
+
 ## Architecture
 
 ```text
@@ -122,6 +136,9 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 | `libs/zio/queries.lua` | All 35 ZIO Treesitter query definitions and handlers |
 | `libs/cats-effect/init.lua` | Cats-Effect library registry module |
 | `libs/cats-effect/queries.lua` | All 36 Cats-Effect Treesitter query definitions and handlers |
+| `libs/cats/init.lua` | Cats tagless-final library registry module |
+| `libs/cats/queries.lua` | All 6 Cats tagless-final Treesitter query definitions and handlers |
+| `cats/evidence.lua` | Typeclass evidence detector for F[_] patterns |
 | `semantic.lua` | LSP type definition verification and caching |
 | `utils.lua` | Async helpers, node inspection, Metals readiness polling |
 | `client.lua` | LSP client management |
@@ -137,7 +154,7 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
 1. Read [AGENTS.md](AGENTS.md) for the pattern catalog, architecture details, and addition guide.
 2. Use `:InspectTree` to understand the AST shape you want to target.
-3. Add your handler to `libs/zio/queries.lua`, register it in the libs registry, and add tests.
+3. Add your handler to the appropriate `libs/*/queries.lua`, register it in the libs registry, and add tests.
 4. See [TODO.md](TODO.md) for remaining roadmap items.
 
 ## References

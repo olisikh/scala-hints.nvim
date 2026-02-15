@@ -4,6 +4,7 @@
 
 - ZIO: 35 patterns (low/medium parity). See `AGENTS.md` for the pattern catalog.
 - Cats-Effect (IO/Resource): 36 patterns implemented. See `AGENTS.md`.
+- Cats tagless-final (F[_]): 6 evidence-gated patterns (void, as, *>, whenA, ifM, handleError). See `AGENTS.md`.
 
 ## Future Work
 
@@ -24,13 +25,12 @@
 - Detect yielding a ZIO effect without flatMapping
 - Suggest `flatten` or appropriate combinator
 
-### Cats-Effect Tagless-Final (F[_]) Gaps 🔴
-- Add evidence-based patterns for `F[_]` where typeclass support must be proven via Metals `textDocument/typeDefinition`.
-- Candidate patterns mirror the IO/Resource catalog: `void`, `as`, `*>` / `>>`, `whenA` / `unlessA`, `ifM`,
-  `raiseWhen` / `raiseUnless`, `fromOption` / `fromEither` / `fromTry`, `handleError` / `handleErrorWith`,
-  `redeem` / `redeemWith`, `flatTap`, `delayBy`, `timeout` / `timeoutTo`, `tupled` / `parTupled`,
-  `parTraverse`, `replicateA_`, `foreverM`.
-- Requires confirming `Functor`/`Apply`/`Monad`/`MonadError`/`Temporal`/`Parallel` evidence before emitting hints.
+### Cats Tagless-Final — Additional Patterns 🟡
+- 6 initial patterns implemented (`void`, `as`, `*>`, `whenA`, `ifM`, `handleError`).
+- Remaining candidate patterns: `unlessA`, `raiseWhen` / `raiseUnless`, `fromOption` / `fromEither` / `fromTry`,
+  `handleErrorWith`, `redeem` / `redeemWith`, `flatTap`, `delayBy`, `timeout` / `timeoutTo`,
+  `tupled` / `parTupled`, `parTraverse`, `replicateA_`, `foreverM`.
+- May require expanding the capability lattice with `Temporal`, `Parallel`, etc.
 
 ## Known Limitations
 

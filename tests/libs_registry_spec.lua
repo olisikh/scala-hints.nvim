@@ -22,7 +22,7 @@ describe('libs registry', function()
       -- Every key must start with a registered lib prefix
       for key, _ in pairs(all) do
         assert.is_truthy(
-          key:match('^zio/') or key:match('^cats%-effect/'),
+          key:match('^zio/') or key:match('^cats/') or key:match('^cats%-effect/'),
           'Expected key to start with a lib prefix, got: ' .. key
         )
       end
@@ -95,6 +95,21 @@ describe('libs registry', function()
         'cats-effect/par_sequence_',
         'cats-effect/replicate_a_',
         'cats-effect/forever_m',
+      }
+      local all = libs.get_all_queries()
+      for _, name in ipairs(expected) do
+        assert.is_truthy(all[name], 'Missing query: ' .. name)
+      end
+    end)
+
+    it('contains known Cats (tagless) queries', function()
+      local expected = {
+        'cats/map_unit',
+        'cats/map_value',
+        'cats/flat_map_value',
+        'cats/when_a',
+        'cats/if_m',
+        'cats/handle_error',
       }
       local all = libs.get_all_queries()
       for _, name in ipairs(expected) do
