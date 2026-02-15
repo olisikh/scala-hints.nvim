@@ -64,7 +64,7 @@ describe('semantic.type_definition_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.type_definition_predicate(bufnr, node, function(_value)
+    semantic.type_definition_predicate(bufnr, node, function(_uri)
       return true
     end, function(result)
       table.insert(results, result)
@@ -74,7 +74,7 @@ describe('semantic.type_definition_predicate caching', function()
     assert.are.equal(false, results[1])
     assert.are.equal(3, call_count)
 
-    semantic.type_definition_predicate(bufnr, node, function(_value)
+    semantic.type_definition_predicate(bufnr, node, function(_uri)
       return true
     end, function(result)
       table.insert(results, result)
@@ -89,7 +89,7 @@ describe('semantic.type_definition_predicate caching', function()
     local call_count = 0
     fake_client.request = function(_method, _params, cb, _buf)
       call_count = call_count + 1
-      cb(nil, { contents = { value = 'ZIO[Any, Nothing, Int]' } })
+      cb(nil, { { targetUri = 'file:///path/to/zio/ZIO.scala' } })
     end
 
     vim.defer_fn = function(_fn, _ms)
@@ -98,8 +98,8 @@ describe('semantic.type_definition_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.type_definition_predicate(bufnr, node, function(value)
-      return value:find('ZIO%[') ~= nil
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('/zio/') ~= nil
     end, function(result)
       table.insert(results, result)
     end)
@@ -108,8 +108,8 @@ describe('semantic.type_definition_predicate caching', function()
     assert.are.equal(true, results[1])
     assert.are.equal(1, call_count)
 
-    semantic.type_definition_predicate(bufnr, node, function(value)
-      return value:find('ZIO%[') ~= nil
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('/zio/') ~= nil
     end, function(result)
       table.insert(results, result)
     end)
@@ -119,11 +119,11 @@ describe('semantic.type_definition_predicate caching', function()
     assert.are.equal(1, call_count)
   end)
 
-  it('does not cache false predicate results', function()
+  it('caches URIs even when predicate returns false', function()
     local call_count = 0
     fake_client.request = function(_method, _params, cb, _buf)
       call_count = call_count + 1
-      cb(nil, { contents = { value = 'NotZIO' } })
+      cb(nil, { { targetUri = 'file:///path/to/cats/effect/IO.scala' } })
     end
 
     vim.defer_fn = function(_fn, _ms)
@@ -132,8 +132,9 @@ describe('semantic.type_definition_predicate caching', function()
 
     local node = make_node()
     local results = {}
-    semantic.type_definition_predicate(bufnr, node, function(value)
-      return value:find('ZIO%[') ~= nil
+    -- predicate looking for ZIO won't match a cats-effect URI
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('/zio/') ~= nil
     end, function(result)
       table.insert(results, result)
     end)
@@ -142,15 +143,51 @@ describe('semantic.type_definition_predicate caching', function()
     assert.are.equal(false, results[1])
     assert.are.equal(1, call_count)
 
-    semantic.type_definition_predicate(bufnr, node, function(value)
-      return value:find('ZIO%[') ~= nil
+    -- URIs are cached even when the predicate doesn't match,
+    -- so the second call is a cache hit (no new LSP request)
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('/zio/') ~= nil
     end, function(result)
       table.insert(results, result)
     end)
 
     assert.are.equal(2, #results)
     assert.are.equal(false, results[2])
-    assert.are.equal(2, call_count)
+    assert.are.equal(1, call_count) -- still 1: cache hit
+  end)
+
+  it('evaluates different predicates against cached URIs independently', function()
+    local call_count = 0
+    fake_client.request = function(_method, _params, cb, _buf)
+      call_count = call_count + 1
+      cb(nil, { { targetUri = 'file:///path/to/cats/effect/IO.scala' } })
+    end
+
+    vim.defer_fn = function(_fn, _ms)
+      -- no-op
+    end
+
+    local node = make_node()
+
+    -- First call: ZIO predicate → false (URI is cats-effect)
+    local zio_result
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('/zio/') ~= nil
+    end, function(result)
+      zio_result = result
+    end)
+    assert.are.equal(false, zio_result)
+    assert.are.equal(1, call_count)
+
+    -- Second call: CE predicate → true (URI matches cats/effect)
+    local ce_result
+    semantic.type_definition_predicate(bufnr, node, function(uri)
+      return uri:find('cats/effect') ~= nil
+    end, function(result)
+      ce_result = result
+    end)
+    assert.are.equal(true, ce_result)
+    assert.are.equal(1, call_count) -- cache hit, no new LSP call
   end)
 
 end)

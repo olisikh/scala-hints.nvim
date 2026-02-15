@@ -17,9 +17,9 @@ local function is_zio_type(uri_value)
     return false
   end
 
-  return string.find(uri_value, '/zio/ZIO') ~= nil
-    or string.find(uri_value, '/zio/package%.scala') ~= nil
-    or string.find(uri_value, '/zio/stream/ZStream') ~= nil
+  return string.find(uri_value, '/zio/ZIO.scala$') ~= nil
+    or string.find(uri_value, '/zio/package%.scala$') ~= nil
+    or string.find(uri_value, '/zio/stream/ZStream.scala$') ~= nil
 end
 
 --- Robust ZLayer type detection: checks for ZLayer type patterns in definition URI
@@ -28,7 +28,7 @@ local function is_zlayer_type(uri_value)
     return false
   end
 
-  return string.find(uri_value, '/zio/ZLayer') ~= nil or string.find(uri_value, '/zio/package%.scala') ~= nil
+  return string.find(uri_value, '/zio/ZLayer%.scala$') ~= nil or string.find(uri_value, '/zio/package%.scala') ~= nil
 end
 
 local function parse_query(query)

@@ -43,8 +43,8 @@ local function buf_state(bufnr)
   if not s then
     s = {
       tick = 0,
-      cache = {}, -- key -> { tick, value }
-      inflight = {}, -- key -> { callbacks = {...}, started_at_tick }
+      cache = {}, -- key -> { tick, uris }
+      inflight = {}, -- key -> { callbacks = {{predicate, cb}, ...}, tick, done }
       queue = {}, -- array of jobs
       inflight_n = 0,
     }
@@ -57,6 +57,37 @@ local function make_key(method, start_row, start_col, end_row, end_col)
   return table.concat({ method, start_row, start_col, end_row, end_col }, ':')
 end
 
+local function collect_location_uris(result)
+  if result == nil then
+    return nil
+  end
+
+  local uris = {}
+  local function add_uri(item)
+    if type(item) ~= 'table' then
+      return
+    end
+    local uri = item.targetUri or item.uri
+    if type(uri) == 'string' and uri ~= '' then
+      table.insert(uris, uri)
+    end
+  end
+
+  if vim.islist(result) then
+    for _, item in ipairs(result) do
+      add_uri(item)
+    end
+  else
+    add_uri(result)
+  end
+
+  if #uris == 0 then
+    return nil
+  end
+
+  return uris
+end
+
 local function pump(bufnr)
   local s = buf_state(bufnr)
 
@@ -67,7 +98,7 @@ local function pump(bufnr)
     local key = job.key
     s.inflight[key] = { callbacks = job.callbacks, tick = job.tick, done = false }
 
-    local done = function(value, cache_ok, cache_reason)
+    local done = function(uris, cache_ok, cache_reason)
       local infl = s.inflight[key]
       if not infl or infl.done then
         return
@@ -77,18 +108,19 @@ local function pump(bufnr)
       s.inflight[key] = nil
       s.inflight_n = s.inflight_n - 1
 
-      -- cache only if still same tick and value is cacheable + true
-      if cache_ok ~= false and value == true and vim.api.nvim_buf_is_valid(bufnr) then
+      -- cache the raw URIs (not the predicate result) so different predicates
+      -- can evaluate them independently on cache hits
+      if cache_ok ~= false and uris ~= nil and vim.api.nvim_buf_is_valid(bufnr) then
         local cur_tick = vim.api.nvim_buf_get_changedtick(bufnr)
         if cur_tick == job.tick then
-          s.cache[key] = { tick = job.tick, value = value }
+          s.cache[key] = { tick = job.tick, uris = uris }
         end
       else
         local reason = cache_reason
         if cache_ok == false then
           reason = cache_reason or 'uncacheable'
-        elseif value ~= true then
-          reason = 'false'
+        elseif uris == nil then
+          reason = 'no-uris'
         end
         if reason ~= nil then
           logger.debug(
@@ -106,8 +138,18 @@ local function pump(bufnr)
         end
       end
 
-      for _, cb in ipairs(job.callbacks) do
-        pcall(cb, value)
+      -- Each callback receives the raw URIs and applies its own predicate
+      for _, entry in ipairs(job.callbacks) do
+        local predicate_result = false
+        if uris then
+          for _, uri in ipairs(uris) do
+            if entry.predicate(uri) then
+              predicate_result = true
+              break
+            end
+          end
+        end
+        pcall(entry.cb, predicate_result)
       end
 
       pump(bufnr)
@@ -159,7 +201,7 @@ local function pump(bufnr)
           run_attempt(idx + 1)
         else
           log_miss('timeout')
-          done(false, false, 'timeout')
+          done(nil, false, 'timeout')
         end
       end, timeout_ms)
 
@@ -174,41 +216,29 @@ local function pump(bufnr)
             run_attempt(idx + 1)
           else
             log_miss(tostring(err))
-            done(false, false, tostring(err))
+            done(nil, false, tostring(err))
           end
           return
         end
 
-        local eval_ok = job.eval(result)
-        local debug_text = nil
-        if job.debug_text then
-          debug_text = job.debug_text(result)
-        else
-          debug_text = nil
-        end
-        logger.debug(
+        local uris = collect_location_uris(result)
+        local debug_text = uris and table.concat(uris, '\n') or nil
+        logger.info(
           string.format(
-            'request result for %s:%d:%d:%d:%d -> %s (text=%s)',
+            'request result for %s:%d:%d:%d:%d -> uris=%s',
             job.method,
             job.sr,
             job.sc,
             job.er,
             job.ec,
-            tostring(eval_ok),
             truncate_text(debug_text, 300) or 'nil'
           ),
           { bufnr = bufnr }
         )
-        local has_result = nil
-        if job.has_result then
-          has_result = job.has_result(result)
+        if not uris then
+          done(nil, false, 'no-definition')
         else
-          has_result = debug_text ~= nil
-        end
-        if not has_result then
-          done(false, false, job.no_result_reason or 'no-definition')
-        else
-          done(eval_ok, true)
+          done(uris, true)
         end
       end)
     end
@@ -217,38 +247,10 @@ local function pump(bufnr)
   end
 end
 
-local function collect_location_uris(result)
-  if result == nil then
-    return nil
-  end
-
-  local uris = {}
-  local function add_uri(item)
-    if type(item) ~= 'table' then
-      return
-    end
-    local uri = item.targetUri or item.uri
-    if type(uri) == 'string' and uri ~= '' then
-      table.insert(uris, uri)
-    end
-  end
-
-  if vim.tbl_islist(result) then
-    for _, item in ipairs(result) do
-      add_uri(item)
-    end
-  else
-    add_uri(result)
-  end
-
-  if #uris == 0 then
-    return nil
-  end
-
-  return uris
-end
-
---- Request a typeDefinition-derived boolean predicate check, with callback
+--- Request a typeDefinition-derived boolean predicate check, with callback.
+--- The underlying LSP result (URI list) is cached per position so that multiple
+--- callers with different predicates (e.g. is_zio_type, is_ce_type) each get
+--- their own predicate evaluated against the same cached URIs.
 ---@param bufnr integer buffer number
 ---@param node TSNode|nil node to resolve
 ---@param predicate fun(value: string): boolean predicate to match against location URI
@@ -286,8 +288,18 @@ function M.type_definition_predicate(bufnr, node, predicate, cb)
   local sr, sc, er, ec = target:range()
   local key = make_key('textDocument/typeDefinition', sr, sc, er, ec)
 
+  -- Cache hit: evaluate THIS caller's predicate against the cached URIs
   local cached = s.cache[key]
   if cached and cached.tick == tick then
+    local hit = false
+    if cached.uris then
+      for _, uri in ipairs(cached.uris) do
+        if predicate(uri) then
+          hit = true
+          break
+        end
+      end
+    end
     logger.debug(
       string.format(
         'typeDefinition cache hit for %s:%d:%d:%d:%d -> %s',
@@ -296,21 +308,22 @@ function M.type_definition_predicate(bufnr, node, predicate, cb)
         sc,
         er,
         ec,
-        tostring(cached.value)
+        tostring(hit)
       ),
       { bufnr = bufnr }
     )
-    cb(cached.value)
+    cb(hit)
     return
   end
 
+  -- Inflight join: attach this caller's predicate+cb so it gets its own evaluation
   local infl = s.inflight[key]
   if infl and infl.tick == tick then
     logger.debug(
       string.format('typeDefinition inflight join for %s:%d:%d:%d:%d', 'textDocument/typeDefinition', sr, sc, er, ec),
       { bufnr = bufnr }
     )
-    table.insert(infl.callbacks, cb)
+    table.insert(infl.callbacks, { predicate = predicate, cb = cb })
     return
   end
 
@@ -342,38 +355,15 @@ function M.type_definition_predicate(bufnr, node, predicate, cb)
     tick = tick,
     method = 'textDocument/typeDefinition',
     params = params,
-    request = function(cb)
-      metals.request('textDocument/typeDefinition', params, cb, bufnr)
+    request = function(req_cb)
+      metals.request('textDocument/typeDefinition', params, req_cb, bufnr)
     end,
-    callbacks = { cb },
+    callbacks = { { predicate = predicate, cb = cb } },
     timeouts = settings.type_definition_timeouts_ms,
     sr = sr,
     sc = sc,
     er = er,
     ec = ec,
-    eval = function(result)
-      local uris = collect_location_uris(result)
-      if not uris then
-        return false
-      end
-      for _, uri in ipairs(uris) do
-        if predicate(uri) then
-          return true
-        end
-      end
-      return false
-    end,
-    has_result = function(result)
-      return collect_location_uris(result) ~= nil
-    end,
-    debug_text = function(result)
-      local uris = collect_location_uris(result)
-      if not uris then
-        return nil
-      end
-      return table.concat(uris, '\n')
-    end,
-    no_result_reason = 'no-definition',
   }
 
   table.insert(s.queue, job)

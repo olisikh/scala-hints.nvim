@@ -14,9 +14,9 @@ local function is_cats_io_type(uri_value)
     return false
   end
 
-  return string.find(uri_value, '/cats/effect/IO.scala') ~= nil
-    or string.find(uri_value, '/cats/effect/Resource.scala') ~= nil
-    or string.find(uri_value, '/cats/effect/kernel/Resource.scala') ~= nil
+  return string.find(uri_value, '/cats/effect/IO%.scala$') ~= nil
+    or string.find(uri_value, '/cats/effect/Resource%.scala$') ~= nil
+    or string.find(uri_value, '/cats/effect/kernel/Resource%.scala$') ~= nil
 end
 
 local function parse_query(query)
@@ -395,6 +395,7 @@ return {
       local replacement_effect
       local replacement_condition
       local verify_target
+
       if alternative_is_unit and negated_inner then
         replacement_effect = consequence_text
         replacement_condition = negated_inner

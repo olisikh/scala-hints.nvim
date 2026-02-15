@@ -92,7 +92,7 @@ M.type_definition_node_and_match = function(bufnr, node, predicate)
     end
 
     local is_match = false
-    if vim.tbl_islist(result) then
+    if vim.islist(result) then
       for _, item in ipairs(result) do
         if match_uri(item) then
           is_match = true
