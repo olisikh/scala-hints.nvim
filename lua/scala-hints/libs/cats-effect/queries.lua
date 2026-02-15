@@ -462,12 +462,11 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local verify_target = matches[1][1]
-      local start = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local effect = matches[4][1]
       local param_value = matches[6][1]
-      local finish = matches[7][1]
+      local finish = matches[8][1]
 
       local param_text = utils.get_node_text(bufnr, param)
       local value_text = utils.get_node_text(bufnr, param_value)
@@ -475,16 +474,17 @@ return {
         return {}
       end
 
-      local _, _, start_row, start_col = start:range()
-      local dstart_row, dstart_col, _, _ = target:range()
-      local _, _, end_row, end_col = finish:range()
-
       local effect_text = utils.get_node_text(bufnr, effect)
+
+      -- Start range at ".flatMap" (back up 1 for the dot)
+      local dstart_row, dstart_col, _, _ = target:range()
+      local start_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = finish:range()
 
       local item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-        replacement = 'flatTap(' .. param_text .. ' => ' .. effect_text .. ')',
+        action = { start_row = dstart_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.flatTap(' .. param_text .. ' => ' .. effect_text .. ')',
         title = 'CE: replace .flatMap returning its parameter with .flatTap',
       }
 
@@ -675,14 +675,14 @@ return {
       value: (identifier) @_6 (#eq? @_6 "IO")
       field: (identifier) @_7 (#eq? @_7 "pure")
     )
-  )
-)
+  ) @_8
+) @_9
 ]]),
     handler = function(bufnr, matches)
       local opt = matches[1][1]
       local io_target = matches[3][1]
       local err = matches[5][1]
-      local finish = matches[7][1]
+      local finish = matches[9][1]
 
       local opt_text = utils.get_node_text(bufnr, opt)
       local err_text = utils.get_node_text(bufnr, err)
@@ -731,13 +731,24 @@ return {
       value: (identifier) @_5 (#eq? @_5 "IO")
       field: (identifier) @_6 (#eq? @_6 "pure")
     )
-  )
-)
+  ) @_7
+) @_8
 ]]),
     handler = function(bufnr, matches)
       local either = matches[1][1]
       local io_target = matches[3][1]
-      local finish = matches[6][1]
+      local finish = matches[8][1]
+
+      -- Skip if the value is a Try(...) call — that's handled by from_try
+      if either:type() == 'call_expression' then
+        local func = either:field('function')[1]
+        if func then
+          local func_text = utils.get_node_text(bufnr, func)
+          if func_text == 'Try' or (func_text and func_text:match('%.Try$')) then
+            return {}
+          end
+        end
+      end
 
       local either_text = utils.get_node_text(bufnr, either)
 
@@ -769,12 +780,13 @@ return {
   },
 
   -- Try(x).fold(IO.raiseError, IO.pure) ~> IO.fromTry(Try(x))
+  -- Also matches qualified scala.util.Try(x)
   from_try = {
     query = parse_query([[
 (call_expression
   function: (field_expression
     value: (call_expression
-      function: (identifier) @_1 (#eq? @_1 "Try")
+      function: (_) @_1
       arguments: (arguments (_) @_2)
     ) @_3
     field: (identifier) @_4 (#eq? @_4 "fold")
@@ -788,13 +800,20 @@ return {
       value: (identifier) @_7 (#eq? @_7 "IO")
       field: (identifier) @_8 (#eq? @_8 "pure")
     )
-  )
-)
+  ) @_9
+) @_10
 ]]),
     handler = function(bufnr, matches)
+      local try_func = matches[1][1]
       local try_call = matches[3][1]
       local io_target = matches[5][1]
-      local finish = matches[8][1]
+      local finish = matches[10][1]
+
+      -- Verify the function is Try (bare or qualified like scala.util.Try)
+      local func_text = utils.get_node_text(bufnr, try_func)
+      if func_text ~= 'Try' and not (func_text and func_text:match('%.Try$')) then
+        return {}
+      end
 
       local try_text = utils.get_node_text(bufnr, try_call)
 
@@ -842,7 +861,7 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local verify_target = matches[1][1]
-      local target = matches[4][1]
+      local attempt_id = matches[2][1]
       local match_node = matches[5][1]
 
       local case_map = extract_case_map(bufnr, match_node)
@@ -869,13 +888,16 @@ return {
         replacement = 'handleError(_ => ' .. left_pure .. ')'
       end
 
-      local dstart_row, dstart_col, _, _ = target:range()
+      -- Start range at ".attempt" to remove it (the dot before attempt)
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      -- Back up one character to include the dot before "attempt"
+      dstart_col = math.max(0, dstart_col - 1)
       local _, _, end_row, end_col = match_node:range()
 
       local item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
         action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-        replacement = replacement,
+        replacement = '.' .. replacement,
         title = 'CE: replace .attempt.flatMap with .handleError',
       }
 
@@ -913,7 +935,7 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local verify_target = matches[1][1]
-      local target = matches[4][1]
+      local attempt_id = matches[2][1]
       local match_node = matches[5][1]
 
       local case_map = extract_case_map(bufnr, match_node)
@@ -931,13 +953,15 @@ return {
         method = 'redeemWith'
       end
 
-      local dstart_row, dstart_col, _, _ = target:range()
+      -- Start range at ".attempt" to remove it (the dot before attempt)
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      dstart_col = math.max(0, dstart_col - 1)
       local _, _, end_row, end_col = match_node:range()
 
       local item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
         action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-        replacement = method .. '(' .. left_fn .. ', ' .. right_fn .. ')',
+        replacement = '.' .. method .. '(' .. left_fn .. ', ' .. right_fn .. ')',
         title = 'CE: replace .attempt.map with .' .. method,
       }
 
@@ -1467,6 +1491,1063 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, effect, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- IO.pure(()) ~> IO.unit
+  pure_unit = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1 (#eq? @_1 "IO")
+    field: (identifier) @_2 (#eq? @_2 "pure")
+  )
+  arguments: (arguments (unit)) @_3
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local target = matches[2][1]
+      local finish = matches[3][1]
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'unit',
+        title = 'CE: replace IO.pure(()) with IO.unit',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- x.as(()) ~> x.void
+  as_unit = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "as")
+  )
+  arguments: (arguments (unit)) @_3
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local target = matches[2][1]
+      local finish = matches[3][1]
+
+      local start_row, start_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'void',
+        title = 'CE: replace .as(()) with .void',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- effect *> IO.unit ~> effect.void
+  zip_right_unit = {
+    query = parse_query([[
+(infix_expression
+  left: (_) @_1
+  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  right: (field_expression
+    value: (identifier) @_3 (#eq? @_3 "IO")
+    field: (identifier) @_4 (#eq? @_4 "unit")
+  ) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local start = matches[1][1]
+      local finish = matches[5][1]
+
+      local _, _, start_row, start_col = start:range()
+      local dstart_row, dstart_col, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.void',
+        title = 'CE: replace *> IO.unit with .void',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- effect *> IO.pure(value) ~> effect.as(value)
+  zip_right_value = {
+    query = parse_query([[
+(infix_expression
+  left: (_) @_1
+  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  right: (call_expression
+    function: (field_expression
+      value: (identifier) @_3 (#eq? @_3 "IO")
+      field: (identifier) @_4 (#eq? @_4 "pure")
+    ) @_5
+    arguments: (arguments (_) @_6 (#not-eq? @_6 "()"))
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local start = matches[1][1]
+      local target = matches[5][1]
+      local value = matches[6][1]
+      local finish = matches[7][1]
+
+      local _, _, start_row, start_col = start:range()
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local value_text = utils.get_node_text(bufnr, value)
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.as(' .. value_text .. ')',
+        title = 'CE: replace *> IO.pure(' .. value_text .. ') with .as(' .. value_text .. ')',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- pred.flatMap(b => if (b) fa else fb) ~> pred.ifM(fa, fb)
+  if_m = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (if_expression
+        condition: (_) @_4
+        consequence: (_) @_5
+        alternative: (_) @_6
+      )
+    )
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local condition = matches[4][1]
+      local consequence = matches[5][1]
+      local alternative = matches[6][1]
+      local finish = matches[7][1]
+
+      -- The condition must simply reference the lambda parameter
+      local param_text = utils.get_node_text(bufnr, param)
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      if condition_text ~= param_text then
+        return {}
+      end
+
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ifM(' .. consequence_text .. ', ' .. alternative_text .. ')',
+        title = 'CE: replace .flatMap(b => if (b) ...) with .ifM',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- coll.map(f).sequence ~> coll.traverse(f)
+  traverse = {
+    query = parse_query([[
+(field_expression
+  value: (call_expression
+    function: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "map")
+    )
+    arguments: (arguments (_) @_3)
+  ) @_4
+  field: (identifier) @_5 (#eq? @_5 "sequence")
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local coll = matches[1][1]
+      local func = matches[3][1]
+      local full = matches[6][1]
+
+      local coll_text = utils.get_node_text(bufnr, coll)
+      local func_text = utils.get_node_text(bufnr, func)
+
+      local start_row, start_col, _, _ = coll:range()
+      local _, _, end_row, end_col = full:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = coll_text .. '.traverse(' .. func_text .. ')',
+        title = 'CE: replace .map(f).sequence with .traverse(f)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- coll.map(f).sequence_ ~> coll.traverse_(f)
+  traverse_ = {
+    query = parse_query([[
+(field_expression
+  value: (call_expression
+    function: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "map")
+    )
+    arguments: (arguments (_) @_3)
+  ) @_4
+  field: (identifier) @_5 (#eq? @_5 "sequence_")
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local coll = matches[1][1]
+      local func = matches[3][1]
+      local full = matches[6][1]
+
+      local coll_text = utils.get_node_text(bufnr, coll)
+      local func_text = utils.get_node_text(bufnr, func)
+
+      local start_row, start_col, _, _ = coll:range()
+      local _, _, end_row, end_col = full:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = coll_text .. '.traverse_(' .. func_text .. ')',
+        title = 'CE: replace .map(f).sequence_ with .traverse_(f)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- opt match { case Some(a) => f(a); case None => IO.unit } ~> opt.traverse_(f)
+  option_traverse = {
+    query = parse_query([[
+(match_expression
+  value: (_) @_1
+  body: (case_block
+    (case_clause
+      pattern: (case_class_pattern
+        type: (type_identifier) @_2 (#eq? @_2 "Some")
+        pattern: (identifier) @_3
+      )
+      body: (_) @_4
+    )
+    (case_clause
+      pattern: (identifier) @_5 (#eq? @_5 "None")
+      body: (_) @_6
+    )
+  )
+) @_7
+]]),
+    handler = function(bufnr, matches)
+      local opt = matches[1][1]
+      local param = matches[3][1]
+      local some_body = matches[4][1]
+      local none_body = matches[6][1]
+      local full = matches[7][1]
+
+      local none_text = unwrap_single_expression_block(bufnr, none_body)
+      if not is_io_unit_text(none_text) then
+        return {}
+      end
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local some_text = unwrap_single_expression_block(bufnr, some_body)
+
+      local opt_text = utils.get_node_text(bufnr, opt)
+
+      local start_row, start_col, _, _ = opt:range()
+      local _, _, end_row, end_col = full:range()
+
+      -- Determine if the Some body is a simple function call with the param
+      -- e.g., f(a) where a is the parameter → opt.traverse_(f)
+      -- Otherwise use lambda form → opt.traverse_(a => body)
+      local func_text
+      if some_body:type() == 'call_expression' then
+        local func_node = some_body:field('function')[1]
+        local args_node = some_body:field('arguments')[1]
+        if func_node and args_node and args_node:named_child_count() == 1 then
+          local arg = args_node:named_child(0)
+          if utils.get_node_text(bufnr, arg) == param_text then
+            func_text = utils.get_node_text(bufnr, func_node)
+          end
+        end
+      end
+
+      if not func_text then
+        func_text = param_text .. ' => ' .. some_text
+      end
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = opt_text .. '.traverse_(' .. func_text .. ')',
+        title = 'CE: replace Option match with .traverse_',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, some_body, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- fa.attempt.flatMap { case Left(e: T) => recover(e); case Left(e) => IO.raiseError(e); case Right(a) => IO.pure(a) }
+  -- ~> fa.recoverWith { case e: T => recover(e) }
+  recover_with = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "attempt")
+    ) @_3
+    field: (identifier) @_4 (#eq? @_4 "flatMap")
+  )
+  arguments: (_) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local attempt_id = matches[2][1]
+      local match_node = matches[5][1]
+
+      local cases = collect_case_clauses(match_node, {})
+      if #cases ~= 3 then
+        return {}
+      end
+
+      -- Find typed Left (e.g. Left(e: MyEx)), plain Left, and Right cases
+      local typed_left, plain_left, right_case
+      for _, case_node in ipairs(cases) do
+        local pattern_node = case_node:field('pattern')[1]
+        if not pattern_node or pattern_node:type() ~= 'case_class_pattern' then
+          return {}
+        end
+
+        local type_node = pattern_node:field('type')[1]
+        local pat_node = pattern_node:field('pattern')[1]
+        if not type_node or not pat_node then
+          return {}
+        end
+
+        local type_text = utils.get_node_text(bufnr, type_node)
+
+        if type_text == 'Left' and pat_node:type() == 'typed_pattern' then
+          typed_left = case_node
+        elseif type_text == 'Left' and pat_node:type() == 'identifier' then
+          plain_left = case_node
+        elseif type_text == 'Right' then
+          right_case = case_node
+        end
+      end
+
+      if not (typed_left and plain_left and right_case) then
+        return {}
+      end
+
+      -- Verify Right(a) => IO.pure(a)
+      local right_pat = right_case:field('pattern')[1]:field('pattern')[1]
+      local right_param = utils.get_node_text(bufnr, right_pat)
+      local right_body = right_case:field('body')[1]
+      local right_body_text = unwrap_single_expression_block(bufnr, right_body)
+      local right_pure_arg = right_body_text:match('IO%.pure%((.+)%)')
+      if not right_pure_arg or vim.trim(right_pure_arg) ~= right_param then
+        return {}
+      end
+
+      -- Verify Left(e) => IO.raiseError(e)
+      local plain_left_pat = plain_left:field('pattern')[1]:field('pattern')[1]
+      local plain_left_param = utils.get_node_text(bufnr, plain_left_pat)
+      local plain_left_body = plain_left:field('body')[1]
+      local plain_left_body_text = unwrap_single_expression_block(bufnr, plain_left_body)
+      local raise_arg = plain_left_body_text:match('IO%.raiseError%((.+)%)')
+      if not raise_arg or vim.trim(raise_arg) ~= plain_left_param then
+        return {}
+      end
+
+      -- Extract typed Left: Left(e: T) => body
+      local typed_pat = typed_left:field('pattern')[1]:field('pattern')[1] -- typed_pattern
+      local typed_param_node = typed_pat:field('pattern')[1]
+      local typed_type_node = typed_pat:field('type')[1]
+      local typed_param = utils.get_node_text(bufnr, typed_param_node)
+      local typed_type = utils.get_node_text(bufnr, typed_type_node)
+      local typed_left_body = typed_left:field('body')[1]
+      local typed_left_body_text = unwrap_single_expression_block(bufnr, typed_left_body)
+
+      local replacement = '.recoverWith { case '
+        .. typed_param
+        .. ': '
+        .. typed_type
+        .. ' => '
+        .. typed_left_body_text
+        .. ' }'
+
+      -- Range from .attempt to end
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      dstart_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = match_node:range()
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'CE: replace .attempt.flatMap with .recoverWith',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- for { fA <- fa.start; fB <- fb.start; a <- fA.joinWithNever; b <- fB.joinWithNever } yield (a, b)
+  -- ~> (fa, fb).parTupled
+  par_tupled_fibers = {
+    query = parse_query([[
+(for_expression
+  enumerators: (enumerators
+    (enumerator
+      (identifier) @_1
+      (field_expression
+        value: (_) @_2
+        field: (identifier) @_3 (#eq? @_3 "start")
+      )
+    )
+    (enumerator
+      (identifier) @_4
+      (field_expression
+        value: (_) @_5
+        field: (identifier) @_6 (#eq? @_6 "start")
+      )
+    )
+    (enumerator
+      (identifier) @_7
+      (field_expression
+        value: (identifier) @_8
+        field: (identifier) @_9 (#eq? @_9 "joinWithNever")
+      )
+    )
+    (enumerator
+      (identifier) @_10
+      (field_expression
+        value: (identifier) @_11
+        field: (identifier) @_12 (#eq? @_12 "joinWithNever")
+      )
+    )
+  )
+  body: (tuple_expression
+    (identifier) @_13
+    (identifier) @_14
+  )
+) @_15
+]]),
+    handler = function(bufnr, matches)
+      local fiber_a = matches[1][1]
+      local fa = matches[2][1]
+      local fiber_b = matches[4][1]
+      local fb = matches[5][1]
+      local join_a_target = matches[8][1]
+      local result_a = matches[7][1]
+      local join_b_target = matches[11][1]
+      local result_b = matches[10][1]
+      local yield_a = matches[13][1]
+      local yield_b = matches[14][1]
+      local full = matches[15][1]
+
+      -- Verify fiber names match join targets
+      if utils.get_node_text(bufnr, fiber_a) ~= utils.get_node_text(bufnr, join_a_target) then
+        return {}
+      end
+      if utils.get_node_text(bufnr, fiber_b) ~= utils.get_node_text(bufnr, join_b_target) then
+        return {}
+      end
+      -- Verify yield params match join result names
+      if utils.get_node_text(bufnr, result_a) ~= utils.get_node_text(bufnr, yield_a) then
+        return {}
+      end
+      if utils.get_node_text(bufnr, result_b) ~= utils.get_node_text(bufnr, yield_b) then
+        return {}
+      end
+
+      local fa_text = utils.get_node_text(bufnr, fa)
+      local fb_text = utils.get_node_text(bufnr, fb)
+      local start_row, start_col, end_row, end_col = full:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '(' .. fa_text .. ', ' .. fb_text .. ').parTupled',
+        title = 'CE: replace fiber start/joinWithNever with .parTupled',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, fa, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- opt match { case Some(x) => IO.pure(x); case None => IO.raiseError(err) }
+  -- ~> IO.fromOption(opt)(err)
+  from_option_match = {
+    query = parse_query([[
+(match_expression
+  value: (_) @_1
+  body: (case_block
+    (case_clause
+      pattern: (case_class_pattern
+        type: (type_identifier) @_2 (#eq? @_2 "Some")
+        pattern: (identifier) @_3
+      )
+      body: (_) @_4
+    )
+    (case_clause
+      pattern: (identifier) @_5 (#eq? @_5 "None")
+      body: (_) @_6
+    )
+  )
+) @_7
+]]),
+    handler = function(bufnr, matches)
+      local opt = matches[1][1]
+      local param = matches[3][1]
+      local some_body = matches[4][1]
+      local none_body = matches[6][1]
+      local full = matches[7][1]
+
+      -- Some body must be IO.pure(x) where x is the param
+      local some_text = unwrap_single_expression_block(bufnr, some_body)
+      local param_text = utils.get_node_text(bufnr, param)
+      local pure_arg = some_text:match('IO%.pure%((.+)%)')
+      if not pure_arg or vim.trim(pure_arg) ~= param_text then
+        return {}
+      end
+
+      -- None body must be IO.raiseError(err)
+      local none_text = unwrap_single_expression_block(bufnr, none_body)
+      local err_arg = none_text:match('IO%.raiseError%((.+)%)')
+      if not err_arg then
+        return {}
+      end
+
+      local opt_text = utils.get_node_text(bufnr, opt)
+      local start_row, start_col, end_row, end_col = full:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'IO.fromOption(' .. opt_text .. ')(' .. vim.trim(err_arg) .. ')',
+        title = 'CE: replace Option match with IO.fromOption',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, some_body, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- either match { case Right(y) => IO.pure(y); case Left(e) => IO.raiseError(e) }
+  -- ~> IO.fromEither(either)
+  from_either_match = {
+    query = parse_query([[
+(match_expression
+  value: (_) @_1
+  body: (case_block
+    (case_clause
+      pattern: (case_class_pattern
+        type: (type_identifier) @_2 (#eq? @_2 "Right")
+        pattern: (identifier) @_3
+      )
+      body: (_) @_4
+    )
+    (case_clause
+      pattern: (case_class_pattern
+        type: (type_identifier) @_5 (#eq? @_5 "Left")
+        pattern: (identifier) @_6
+      )
+      body: (_) @_7
+    )
+  )
+) @_8
+]]),
+    handler = function(bufnr, matches)
+      local either = matches[1][1]
+      local right_param = matches[3][1]
+      local right_body = matches[4][1]
+      local left_param = matches[6][1]
+      local left_body = matches[7][1]
+      local full = matches[8][1]
+
+      -- Right body must be IO.pure(y) where y is the param
+      local right_text = unwrap_single_expression_block(bufnr, right_body)
+      local right_param_text = utils.get_node_text(bufnr, right_param)
+      local pure_arg = right_text:match('IO%.pure%((.+)%)')
+      if not pure_arg or vim.trim(pure_arg) ~= right_param_text then
+        return {}
+      end
+
+      -- Left body must be IO.raiseError(e) where e is the param
+      local left_text = unwrap_single_expression_block(bufnr, left_body)
+      local left_param_text = utils.get_node_text(bufnr, left_param)
+      local raise_arg = left_text:match('IO%.raiseError%((.+)%)')
+      if not raise_arg or vim.trim(raise_arg) ~= left_param_text then
+        return {}
+      end
+
+      local either_text = utils.get_node_text(bufnr, either)
+      local start_row, start_col, end_row, end_col = full:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'IO.fromEither(' .. either_text .. ')',
+        title = 'CE: replace Either match with IO.fromEither',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, right_body, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- x.handleErrorWith(e => IO.raiseError(wrap(e)))
+  -- ~> x.adaptError { case e => wrap(e) }
+  adapt_error = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "handleErrorWith")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (call_expression
+        function: (field_expression
+          value: (identifier) @_4 (#eq? @_4 "IO")
+          field: (identifier) @_5 (#eq? @_5 "raiseError")
+        )
+        arguments: (arguments (_) @_6)
+      )
+    )
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local wrap_expr = matches[6][1]
+      local finish = matches[7][1]
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local wrap_text = utils.get_node_text(bufnr, wrap_expr)
+
+      -- Start at ".handleErrorWith" (back up 1 for the dot)
+      local dstart_row, dstart_col, _, _ = target:range()
+      local start_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.adaptError { case ' .. param_text .. ' => ' .. wrap_text .. ' }',
+        title = 'CE: replace .handleErrorWith(IO.raiseError) with .adaptError',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- acquire.flatMap { a => use(a).guarantee(release(a)) }
+  -- ~> acquire.bracket(a => use(a))(a => release(a))
+  bracket = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (block
+    (lambda_expression
+      parameters: (identifier) @_3
+      (call_expression
+        function: (field_expression
+          value: (_) @_4
+          field: (identifier) @_5 (#eq? @_5 "guarantee")
+        )
+        arguments: (arguments (_) @_6)
+      )
+    )
+  ) @_7
+)
+]]),
+    handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local use_expr = matches[4][1]
+      local release_expr = matches[6][1]
+      local finish = matches[7][1]
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local use_text = utils.get_node_text(bufnr, use_expr)
+      local release_text = utils.get_node_text(bufnr, release_expr)
+
+      -- Build use function: if use is a simple call like use(a), extract function name
+      local use_fn
+      if use_expr:type() == 'call_expression' then
+        local func_node = use_expr:field('function')[1]
+        local args_node = use_expr:field('arguments')[1]
+        if func_node and func_node:type() == 'identifier' and args_node and args_node:named_child_count() == 1 then
+          local arg = args_node:named_child(0)
+          if utils.get_node_text(bufnr, arg) == param_text then
+            use_fn = utils.get_node_text(bufnr, func_node)
+          end
+        end
+      end
+      if not use_fn then
+        use_fn = param_text .. ' => ' .. use_text
+      end
+
+      -- Build release function: same logic
+      local release_fn
+      if release_expr:type() == 'call_expression' then
+        local func_node = release_expr:field('function')[1]
+        local args_node = release_expr:field('arguments')[1]
+        if func_node and func_node:type() == 'identifier' and args_node and args_node:named_child_count() == 1 then
+          local arg = args_node:named_child(0)
+          if utils.get_node_text(bufnr, arg) == param_text then
+            release_fn = utils.get_node_text(bufnr, func_node)
+          end
+        end
+      end
+      if not release_fn then
+        release_fn = param_text .. ' => ' .. release_text
+      end
+
+      -- Start at ".flatMap" (back up 1 for the dot)
+      local dstart_row, dstart_col, _, _ = target:range()
+      local start_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.bracket(' .. use_fn .. ')(' .. release_fn .. ')',
+        title = 'CE: replace .flatMap { .guarantee } with .bracket',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- for { a <- fa; b <- fb; ... } yield Constructor(a, b, ...)
+  -- ~> (fa, fb, ...).mapN(Constructor.apply)
+  -- for { a <- fa; b <- fb; ... } yield (a, b, ...)
+  -- ~> (fa, fb, ...).tupled
+  map_n = {
+    query = parse_query([[
+(for_expression
+  enumerators: (enumerators) @_1
+  body: (_) @_2
+) @_3
+]]),
+    handler = function(bufnr, matches)
+      local enums_node = matches[1][1]
+      local body = matches[2][1]
+      local full = matches[3][1]
+
+      -- Collect enumerators: each must be simple param <- effect
+      local params = {}
+      local effects = {}
+      local effect_nodes = {}
+      for child in enums_node:iter_children() do
+        if child:type() == 'enumerator' then
+          local named_count = child:named_child_count()
+          if named_count ~= 2 then
+            return {}
+          end
+          local param_node = child:named_child(0)
+          local effect_node = child:named_child(1)
+          if param_node:type() ~= 'identifier' then
+            return {}
+          end
+          table.insert(params, utils.get_node_text(bufnr, param_node))
+          table.insert(effects, utils.get_node_text(bufnr, effect_node))
+          table.insert(effect_nodes, effect_node)
+        end
+      end
+
+      if #params < 2 then
+        return {}
+      end
+
+      -- Check body type: constructor call or tuple
+      local replacement
+      local actual_body = unwrap_single_expression_node(body)
+
+      if actual_body:type() == 'tuple_expression' then
+        -- Verify tuple contains exactly the params in order
+        local tuple_count = actual_body:named_child_count()
+        if tuple_count ~= #params then
+          return {}
+        end
+        for i = 0, tuple_count - 1 do
+          local elem = actual_body:named_child(i)
+          if elem:type() ~= 'identifier' or utils.get_node_text(bufnr, elem) ~= params[i + 1] then
+            return {}
+          end
+        end
+        replacement = '(' .. table.concat(effects, ', ') .. ').tupled'
+      elseif actual_body:type() == 'call_expression' then
+        local func_node = actual_body:field('function')[1]
+        local args_node = actual_body:field('arguments')[1]
+        if not func_node or not args_node then
+          return {}
+        end
+        -- Arguments must match params exactly in order
+        local arg_count = args_node:named_child_count()
+        if arg_count ~= #params then
+          return {}
+        end
+        for i = 0, arg_count - 1 do
+          local arg = args_node:named_child(i)
+          if arg:type() ~= 'identifier' or utils.get_node_text(bufnr, arg) ~= params[i + 1] then
+            return {}
+          end
+        end
+        local func_text = utils.get_node_text(bufnr, func_node)
+        replacement = '(' .. table.concat(effects, ', ') .. ').mapN(' .. func_text .. '.apply)'
+      else
+        return {}
+      end
+
+      local start_row, start_col, end_row, end_col = full:range()
+      local verify_target = effect_nodes[1]
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'CE: replace for-comprehension with .mapN',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else

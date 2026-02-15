@@ -12,6 +12,9 @@ describe('semantic.type_definition_predicate caching', function()
       range = function()
         return 0, 0, 0, 1
       end,
+      parent = function()
+        return nil
+      end,
     }
   end
 
