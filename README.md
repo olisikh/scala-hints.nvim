@@ -1,12 +1,12 @@
 # scala-hints.nvim
 
-Opinionated Neovim diagnostics + quickfix code actions for **ZIO**-based Scala code. Uses Treesitter for AST matching, Metals LSP for type verification, and native Neovim diagnostics / code-action hooks.
+Opinionated Neovim diagnostics + quickfix code actions for **ZIO** and **Cats-Effect (IO/Resource)** Scala code. Uses Treesitter for AST matching, Metals LSP for type verification, and native Neovim diagnostics / code-action hooks.
 
 ## Features
 
-- **35 Treesitter patterns** detecting common ZIO code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`)
+- **ZIO (35) + Cats-Effect (36) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`)
 - **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
-- **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO types
+- **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO or Cats-Effect types
 - **Per-query severity** — configure each pattern as `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`
 - **Async** — all queries run via `plenary.async` with configurable timeouts
 
@@ -50,6 +50,7 @@ require('scala-hints').setup({
       ['zio/zio_die'] = 'WARN', -- Elevate severity for a specific diagnostic
     },
     excluded_libs = {}, -- Exclude libraries from diagnostics (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
+  },
   actions = {
     excluded_libs = {}, -- Exclude libraries from code actions (performance), e.g. { "zio", "cats-effect", "yaes", "kyo" }
   },
@@ -64,7 +65,9 @@ require('scala-hints').setup({
 
 ## Pattern Catalog
 
-35 patterns across constructors, combinators, error handling, type aliases, and helpers:
+### ZIO (35 patterns)
+
+Patterns across constructors, combinators, error handling, type aliases, and helpers:
 
 | Category | Patterns |
 | --- | --- |
@@ -77,6 +80,19 @@ require('scala-hints').setup({
 | **Service access** | `zio_service` |
 | **Transform helpers** | `tap`, `tap_error`, `tap_both`, `when`, `unless` |
 | **Exit codes** | `exit_code_map`, `exit_code_as`, `exit_code_fold` |
+
+### Cats-Effect (IO/Resource, 36 patterns)
+
+Cats-Effect hints cover common IO/Resource idioms and include:
+
+| Category | Examples |
+| --- | --- |
+| **Discard/replace value** | `map_unit`, `map_value`, `pure_unit`, `as_unit` |
+| **Sequencing & control flow** | `zip_right_unit`, `zip_right_value`, `when_a`, `unless_a`, `if_m` |
+| **Error handling** | `handle_error`, `redeem`, `recover_with`, `adapt_error` |
+| **Lifting values** | `from_option`, `from_either`, `from_try`, match-based variants |
+| **Parallelism & traversal** | `par_tupled`, `par_sequence`, `par_sequence_`, `traverse`, `traverse_` |
+| **Timing & resources** | `delay_by`, `timeout`, `bracket` |
 
 Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
@@ -104,6 +120,8 @@ Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 | `actions.lua` | Resolves code actions for a given range |
 | `query.lua` | Generic query execution engine |
 | `libs/zio/queries.lua` | All 35 ZIO Treesitter query definitions and handlers |
+| `libs/cats-effect/init.lua` | Cats-Effect library registry module |
+| `libs/cats-effect/queries.lua` | All 36 Cats-Effect Treesitter query definitions and handlers |
 | `semantic.lua` | LSP type definition verification and caching |
 | `utils.lua` | Async helpers, node inspection, Metals readiness polling |
 | `client.lua` | LSP client management |
