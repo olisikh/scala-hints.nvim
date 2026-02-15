@@ -11,6 +11,7 @@ local M = {}
 --- Add new libraries here.
 local supported_libs = {
   'zio',
+  'cats-effect',
 }
 
 local levels = {
@@ -57,7 +58,7 @@ end
 function M.reload()
   _all_queries = nil
   for _, mod_name in ipairs(supported_libs) do
-    package.loaded[mod_name] = nil
+    package.loaded['scala-hints.libs.' .. mod_name] = nil
   end
 end
 

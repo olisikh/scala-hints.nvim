@@ -23,6 +23,13 @@ All low- and medium-complexity patterns are implemented. See `AGENTS.md` §5.1 f
 - Detect yielding a ZIO effect without flatMapping
 - Suggest `flatten` or appropriate combinator
 
+### Cats-Effect Tagless-Final TODOs 🔴
+- Add evidence-based patterns for `F[_]` where typeclass support must be proven via Metals `textDocument/typeDefinition`.
+- Candidate patterns: `void`, `as`, `*>` / `>>`, `whenA` / `unlessA`, `ifM`, `raiseWhen` / `raiseUnless`,
+  `fromOption` / `fromEither` / `fromTry`, `handleError` / `handleErrorWith`, `redeem` / `redeemWith`,
+  `flatTap`, `delayBy`, `timeout` / `timeoutTo`, `tupled` / `parTupled`, `parTraverse`, `replicateA_`, `foreverM`.
+- Requires confirming `Functor`/`Apply`/`Monad`/`MonadError`/`Temporal`/`Parallel` evidence before emitting hints.
+
 ## Known Limitations
 
 1. **Metals Indexing** — Diagnostics only appear after Metals finishes indexing. Editing another file can trigger re-indexing.

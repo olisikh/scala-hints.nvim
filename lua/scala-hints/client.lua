@@ -25,27 +25,80 @@ local server_capabilities = {
   },
 }
 
---- Check whether Metals is attached and initialized for a given buffer
+--- Check whether Metals is attached, initialized, and done indexing for a given buffer.
+--- nvim-metals sets vim.g.metals_status with progress info while Metals is
+--- importing the build or indexing. When empty/nil, Metals is idle.
 local function metals_ready(bufnr)
   local clients = lsp.get_clients({ bufnr = bufnr })
   for _, c in ipairs(clients) do
     if c.name == 'metals' and c.initialized then
+      local status = vim.g.metals_status
+      if type(status) == 'string' and status ~= '' then
+        return false
+      end
       return true
     end
   end
   return false
 end
 
---- Collect diagnostics and push them back to Neovim via the dispatcher
+-- Per-buffer flag: true while a readiness-polling loop is active.
+local pending_readiness = {}
+
+-- Forward declaration (defined below schedule_diagnostics)
+local refresh_diagnostics
+
+--- Collect diagnostics once Metals is ready, polling if necessary.
 ---@param bufnr integer
 ---@param dispatchers vim.lsp.rpc.Dispatchers
-local function refresh_diagnostics(bufnr, dispatchers)
+local function schedule_diagnostics(bufnr, dispatchers)
   if not is_valid_bufnr(bufnr) then
     return
   end
 
   if not metals_ready(bufnr) then
-    logger.info('Metals not ready for buffer ' .. bufnr .. ', skipping diagnostics')
+    -- Start a polling loop (only one per buffer).
+    if not pending_readiness[bufnr] then
+      pending_readiness[bufnr] = true
+      logger.info('Metals not ready for buffer ' .. bufnr .. ', polling for readiness')
+
+      local attempts = 0
+      local max_attempts = 15 -- 15 × 2 s = 30 s max wait
+      local interval_ms = 2000
+
+      local function poll()
+        attempts = attempts + 1
+        if not is_valid_bufnr(bufnr) or attempts > max_attempts then
+          pending_readiness[bufnr] = nil
+          if attempts > max_attempts then
+            logger.warn('Metals readiness timeout for buffer ' .. bufnr .. ' after ' .. max_attempts .. ' attempts')
+          end
+          return
+        end
+
+        if metals_ready(bufnr) then
+          pending_readiness[bufnr] = nil
+          logger.info('Metals ready for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '), collecting diagnostics')
+          refresh_diagnostics(bufnr, dispatchers)
+        else
+          logger.debug('Metals still indexing for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '/' .. max_attempts .. ')')
+          vim.defer_fn(poll, interval_ms)
+        end
+      end
+
+      vim.defer_fn(poll, interval_ms)
+    end
+    return
+  end
+
+  refresh_diagnostics(bufnr, dispatchers)
+end
+
+--- Collect diagnostics and push them back to Neovim via the dispatcher
+---@param bufnr integer
+---@param dispatchers vim.lsp.rpc.Dispatchers
+refresh_diagnostics = function(bufnr, dispatchers)
+  if not is_valid_bufnr(bufnr) then
     return
   end
 
@@ -148,7 +201,7 @@ function M.rpc_start(dispatchers)
       if uri then
         local bufnr = vim.uri_to_bufnr(uri)
         logger.info('Received ' .. method .. ' for buffer ' .. bufnr)
-        refresh_diagnostics(bufnr, dispatchers)
+        schedule_diagnostics(bufnr, dispatchers)
       end
       return true, message_id
     end

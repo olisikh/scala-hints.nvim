@@ -3,7 +3,7 @@
 --- Provides functions to:
 ---   - Create scratch buffers with Scala source and parse with Treesitter
 ---   - Run a specific query definition against a buffer
----   - Mock/restore LSP-dependent functions (hover_node_and_match, hover_predicate)
+---   - Mock/restore LSP-dependent functions (type_definition_node_and_match, type_definition_predicate)
 ---   - Assert result shapes
 
 local H = {}
@@ -111,47 +111,63 @@ end
 -- LSP mocking
 ------------------------------------------------------------------------
 
-local _original_hover_node_and_match = nil
-local _original_hover_predicate = nil
+local _original_type_definition_node_and_match = nil
+local _original_type_definition_predicate = nil
 
---- Mock utils.hover_node_and_match to return a fixed value.
+--- Mock utils.type_definition_node_and_match to return a fixed value.
 --- Call H.restore_mocks() in after_each to restore.
 ---@param return_value boolean value the mock should return
-function H.mock_hover_node_and_match(return_value)
+function H.mock_type_definition_node_and_match(return_value)
   local utils = require('scala-hints.utils')
-  if _original_hover_node_and_match == nil then
-    _original_hover_node_and_match = utils.hover_node_and_match
+  if _original_type_definition_node_and_match == nil then
+    _original_type_definition_node_and_match = utils.type_definition_node_and_match
   end
-  utils.hover_node_and_match = function(_bufnr, _node, _predicate)
+  utils.type_definition_node_and_match = function(_bufnr, _node, _predicate)
     return return_value
   end
 end
 
---- Mock semantic.hover_predicate to immediately call cb with a fixed value.
+--- Mock semantic.type_definition_predicate to immediately call cb with a fixed value.
 --- Call H.restore_mocks() in after_each to restore.
 ---@param return_value boolean value passed to the callback
-function H.mock_hover_predicate(return_value)
+function H.mock_type_definition_predicate(return_value)
   local semantic = require('scala-hints.semantic')
-  if _original_hover_predicate == nil then
-    _original_hover_predicate = semantic.hover_predicate
+  if _original_type_definition_predicate == nil then
+    _original_type_definition_predicate = semantic.type_definition_predicate
   end
-  semantic.hover_predicate = function(_bufnr, _node, _predicate, cb)
+  semantic.type_definition_predicate = function(_bufnr, _node, _predicate, cb, _opts)
     cb(return_value)
   end
 end
 
 --- Restore all mocked functions to originals.
 function H.restore_mocks()
-  if _original_hover_node_and_match then
+  if _original_type_definition_node_and_match then
     local utils = require('scala-hints.utils')
-    utils.hover_node_and_match = _original_hover_node_and_match
-    _original_hover_node_and_match = nil
+    utils.type_definition_node_and_match = _original_type_definition_node_and_match
+    _original_type_definition_node_and_match = nil
   end
-  if _original_hover_predicate then
+  if _original_type_definition_predicate then
     local semantic = require('scala-hints.semantic')
-    semantic.hover_predicate = _original_hover_predicate
-    _original_hover_predicate = nil
+    semantic.type_definition_predicate = _original_type_definition_predicate
+    _original_type_definition_predicate = nil
   end
+end
+
+--- Resolve all pending thunks and return the collected results.
+--- Calls each thunk with a done callback that collects non-nil items.
+---@param pending function[] array of pending thunks
+---@return table[] results collected from resolved thunks
+function H.resolve_pending(pending)
+  local results = {}
+  for _, thunk in ipairs(pending) do
+    thunk(function(item)
+      if item ~= nil then
+        table.insert(results, item)
+      end
+    end)
+  end
+  return results
 end
 
 ------------------------------------------------------------------------

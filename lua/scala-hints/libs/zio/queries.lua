@@ -11,22 +11,24 @@ local utils = require('scala-hints.utils')
 local semantic = require('scala-hints.semantic')
 local ts = vim.treesitter
 
---- Robust ZIO type detection: checks for ZIO type patterns in hover response
-local function is_zio_type(hover_value)
-  if not hover_value or type(hover_value) ~= 'string' then
+--- Robust ZIO type detection: checks for ZIO type patterns in definition URI
+local function is_zio_type(uri_value)
+  if not uri_value or type(uri_value) ~= 'string' then
     return false
   end
-  -- Check for ZIO type patterns: ZIO[, UIO[, IO[, etc.
-  return string.find(hover_value, 'ZIO%[') ~= nil
-    or string.find(hover_value, 'UIO%[') ~= nil
-    or string.find(hover_value, 'IO%[') ~= nil
-    or string.find(hover_value, 'URIO%[') ~= nil
-    or string.find(hover_value, 'RIO%[') ~= nil
-    or string.find(hover_value, 'Task%[') ~= nil
-    or string.find(hover_value, 'Managed%[') ~= nil
-    or string.find(hover_value, 'ZStream%[') ~= nil
-    or string.find(hover_value, ': ZIO') ~= nil
-    or string.find(hover_value, 'object ZIO') ~= nil
+
+  return string.find(uri_value, '/zio/ZIO.scala$') ~= nil
+    or string.find(uri_value, '/zio/package%.scala$') ~= nil
+    or string.find(uri_value, '/zio/stream/ZStream.scala$') ~= nil
+end
+
+--- Robust ZLayer type detection: checks for ZLayer type patterns in definition URI
+local function is_zlayer_type(uri_value)
+  if not uri_value or type(uri_value) ~= 'string' then
+    return false
+  end
+
+  return string.find(uri_value, '/zio/ZLayer%.scala$') ~= nil or string.find(uri_value, '/zio/package%.scala') ~= nil
 end
 
 local function parse_query(query)
@@ -84,7 +86,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -102,7 +104,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -130,6 +132,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local exception = matches[4][1]
       local finish = matches[5][1]
@@ -139,12 +142,25 @@ return {
 
       local exception_text = utils.get_node_text(bufnr, exception)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.die(' .. exception_text .. ')',
+        title = 'ZIO: replace ZIO.fail(' .. exception_text .. ').orDie with ZIO.die(' .. exception_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.die(' .. exception_text .. ')',
-          title = 'ZIO: replace ZIO.fail(' .. exception_text .. ').orDie with ZIO.die(' .. exception_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -167,7 +183,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
@@ -185,7 +201,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -211,6 +227,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -219,12 +236,25 @@ return {
 
       local replaced = utils.get_node_text(bufnr, finish)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.unit',
+        title = 'ZIO: replace *> ' .. replaced .. ' with .unit',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.unit',
-          title = 'ZIO: replace *> ' .. replaced .. ' with .unit',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -242,18 +272,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'unit',
+        title = 'ZIO: replace .as(()) with .unit',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'unit',
-          title = 'ZIO: replace .as(()) with .unit',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -275,6 +319,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[5][1]
       local value = matches[6][1]
@@ -286,12 +331,25 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.as(' .. value_text .. ')',
+        title = 'ZIO: replace *> ZIO.succeed(' .. value_text .. ') with .as(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.as(' .. value_text .. ')',
-          title = 'ZIO: replace *> ZIO.succeed(' .. value_text .. ') with .as(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -310,7 +368,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -322,7 +380,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -359,7 +417,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -373,7 +431,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -417,7 +475,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
@@ -431,7 +489,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -476,7 +534,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -488,7 +546,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -528,7 +586,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[5][1]
       local finish = matches[6][1]
@@ -540,7 +598,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -580,6 +638,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local foreach_fun = matches[2][1]
       local collection = matches[4][1]
@@ -600,12 +659,25 @@ return {
         replacement = 'foreachPar'
       end
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.' .. replacement .. '(' .. collection_text .. ')' .. value_text,
+        title = 'ZIO: replace ZIO.' .. foreach_text .. ' with ZIO.' .. replacement,
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.' .. replacement .. '(' .. collection_text .. ')' .. value_text,
-          title = 'ZIO: replace ZIO.' .. foreach_text .. ' with ZIO.' .. replacement,
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -626,6 +698,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local collection = matches[4][1]
       local fn_arg = matches[7][1]
@@ -637,12 +710,25 @@ return {
       local collection_text = utils.get_node_text(bufnr, collection)
       local fn_text = utils.get_node_text(bufnr, fn_arg)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.foreachParN(n)(' .. collection_text .. ')(' .. fn_text .. ')',
+        title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.foreachParN(n)(' .. collection_text .. ')(' .. fn_text .. ')',
-          title = 'ZIO: replace ZIO.foreachPar with ZIO.foreachParN (specify parallelism)',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -665,18 +751,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[3][1]
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ignore',
+        title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ignore',
-          title = 'ZIO: replace .foldCause(_ => (), _ => ()) with .ignore',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -699,7 +799,7 @@ return {
 ) @_4
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
@@ -711,7 +811,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -751,7 +851,7 @@ return {
 ) 
 ]]),
     handler = function(bufnr, matches)
-      local hover_target = matches[1][1]
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[6][1]
       local finish = matches[7][1]
@@ -763,7 +863,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.hover_predicate(bufnr, hover_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
               if not is_zio then
                 done(nil)
                 return
@@ -803,6 +903,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local value = matches[4][1]
       local finish = matches[5][1]
@@ -812,16 +913,29 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'orElseFail(' .. value_text .. ')',
+        title = 'ZIO: replace .flatMapError(_ => ZIO.succeed('
+          .. value_text
+          .. ')) with .orElseFail('
+          .. value_text
+          .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'orElseFail(' .. value_text .. ')',
-          title = 'ZIO: replace .flatMapError(_ => ZIO.succeed('
-            .. value_text
-            .. ')) with .orElseFail('
-            .. value_text
-            .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -845,6 +959,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -878,7 +993,26 @@ return {
         end
       end
 
-      return results
+      if #results == 0 then
+        return {}
+      end
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                for _, item in ipairs(results) do
+                  done(item)
+                end
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -900,6 +1034,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[1][1]
       local finish = matches[5][1]
 
@@ -933,7 +1068,26 @@ return {
         end
       end
 
-      return results
+      if #results == 0 then
+        return {}
+      end
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                for _, item in ipairs(results) do
+                  done(item)
+                end
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
     end,
   },
 
@@ -961,6 +1115,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[4][1]
       local finish = matches[9][1]
@@ -970,12 +1125,25 @@ return {
 
       local value_text = utils.get_node_text(bufnr, value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.none',
+        title = 'ZIO: replace ZIO.succeed(' .. value_text .. ') with ZIO.none',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.none',
-          title = 'ZIO: replace ZIO.succeed(' .. value_text .. ') with ZIO.none',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1005,6 +1173,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local value = matches[5] and matches[5][1]
       local some_value = matches[6] and matches[6][1]
@@ -1017,12 +1186,25 @@ return {
       local expr_text = utils.get_node_text(bufnr, expr)
       local value_text = value ~= nil and utils.get_node_text(bufnr, value) or utils.get_node_text(bufnr, some_value)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.some(' .. value_text .. ')',
+        title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.some(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.some(' .. value_text .. ')',
-          title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.some(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1054,6 +1236,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
 
       local either = matches[4] and matches[4][1]
@@ -1084,12 +1267,25 @@ return {
 
       local expr_text = utils.get_node_text(bufnr, expr)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+        title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.' .. smartc_text .. '(' .. value_text .. ')',
-          title = 'ZIO: replace ZIO.succeed(' .. expr_text .. ') with ZIO.' .. smartc_text .. '(' .. value_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1111,6 +1307,7 @@ return {
 ) @_8
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local duration = matches[4][1]
       local sleep_expr = matches[5][1]
@@ -1122,12 +1319,25 @@ return {
 
       local duration_text = utils.get_node_text(bufnr, duration)
 
+      local item = {
+        diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+        action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+        replacement = '.delay(' .. duration_text .. ')',
+        title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-          replacement = '.delay(' .. duration_text .. ')',
-          title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1145,6 +1355,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local effect = matches[4][1]
       local finish = matches[5][1]
@@ -1154,12 +1365,25 @@ return {
 
       local effect_text = utils.get_node_text(bufnr, effect)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = '.toLayer',
+        title = 'ZIO: replace ZLayer.fromEffect(' .. effect_text .. ') with ' .. effect_text .. '.toLayer',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = '.toLayer',
-          title = 'ZIO: replace ZLayer.fromEffect(' .. effect_text .. ') with ' .. effect_text .. '.toLayer',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1186,6 +1410,7 @@ return {
 ) @_9
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local layer = matches[1][1]
       local effect = matches[6][1]
       local start = matches[9][1]
@@ -1195,12 +1420,25 @@ return {
       local layer_text = utils.get_node_text(bufnr, layer)
       local effect_text = utils.get_node_text(bufnr, effect)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = effect_text .. '.provideLayer(' .. layer_text .. ')',
+        title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = effect_text .. '.provideLayer(' .. layer_text .. ')',
-          title = 'ZIO: replace layer.build.use(effect.provide) with effect.provideLayer(layer)',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zlayer_type, function(is_zlayer)
+              if is_zlayer then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1221,20 +1459,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
-      -- This pattern is primarily informational - suggests using ZIO.service[A]
-      -- In practice, ZIO.access(identity) is often used to access a service from the environment.
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.service',
+        title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.service',
-          title = 'ZIO: consider using ZIO.service[A] instead of ZIO.access(identity) for cleaner service access',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1260,18 +1510,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .map(_ => ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1294,18 +1558,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[5][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .as(ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1338,18 +1616,32 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local finish = matches[7][1]
 
       local start_row, start_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'exitCode',
+        title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'exitCode',
-          title = 'ZIO: replace .fold(_ => ExitCode.failure, _ => ExitCode.success) with .exitCode',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1386,6 +1678,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1412,12 +1705,34 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tap(' .. param_text .. ' => ' .. body_text .. ')'
 
+      -- First body expression must be a ZIO effect for .tap to be valid
+      local first_body_expr = body_block:named_child(0)
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace .map returning its parameter with .tap',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace .map returning its parameter with .tap',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+                if body_is_zio then
+                  done(item)
+                else
+                  done(nil)
+                end
+              end)
+            end)
+          end,
         },
       }
     end,
@@ -1454,6 +1769,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local target = matches[2][1]
       local param = matches[3][1]
       local last_expr = matches[4][1]
@@ -1480,12 +1796,34 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tapError(' .. param_text .. ' => ' .. body_text .. ')'
 
+      -- First body expression must be a ZIO effect for .tapError to be valid
+      local first_body_expr = body_block:named_child(0)
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace .mapError returning its parameter with .tapError',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace .mapError returning its parameter with .tapError',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+                if body_is_zio then
+                  done(item)
+                else
+                  done(nil)
+                end
+              end)
+            end)
+          end,
         },
       }
     end,
@@ -1591,6 +1929,7 @@ return {
 ) @_13
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local first_method = matches[2][1]
       local first_param = matches[4][1]
       local first_last = matches[5][1]
@@ -1655,17 +1994,54 @@ return {
         ok_side = first_side
       end
 
+      -- First body expressions must be ZIO effects for .tapBoth to be valid
+      local first_body_expr = first_body:named_child(0)
+      local second_body_expr = second_body:named_child(0)
+
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
-      local replacement = 'tapBoth(' .. err_side.param .. ' => ' .. err_side.body .. ', ' .. ok_side.param .. ' => ' .. ok_side.body .. ')'
+      local replacement = 'tapBoth('
+        .. err_side.param
+        .. ' => '
+        .. err_side.body
+        .. ', '
+        .. ok_side.param
+        .. ' => '
+        .. ok_side.body
+        .. ')'
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement,
+        title = 'ZIO: replace map/mapError side-effects with .tapBoth',
+      }
 
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement,
-          title = 'ZIO: replace map/mapError side-effects with .tapBoth',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if not is_zio then
+                done(nil)
+                return
+              end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body1_is_zio)
+                if not body1_is_zio then
+                  done(nil)
+                  return
+                end
+                semantic.type_definition_predicate(bufnr, second_body_expr, is_zio_type, function(body2_is_zio)
+                  if body2_is_zio then
+                    done(item)
+                  else
+                    done(nil)
+                  end
+                end)
+              end)
+            end)
+          end,
         },
       }
     end,
@@ -1687,6 +2063,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local verify_target = matches[1][1]
       local start = matches[3][1]
       local condition = matches[4][1]
       local error_value = matches[6][1]
@@ -1698,12 +2075,33 @@ return {
       local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
       local error_text = utils.get_node_text(bufnr, error_value)
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        title = 'ZIO: replace ZIO.cond('
+          .. condition_text
+          .. ', (), '
+          .. error_text
+          .. ') with ZIO.fail('
+          .. error_text
+          .. ').unless('
+          .. condition_text
+          .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
-          title = 'ZIO: replace ZIO.cond(' .. condition_text .. ', (), ' .. error_text .. ') with ZIO.fail(' .. error_text .. ').unless(' .. condition_text .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1737,22 +2135,42 @@ return {
 
       local replacement_effect
       local replacement_condition
+      local verify_target
       if alternative_is_unit and not negated_inner then
         replacement_effect = consequence_text
         replacement_condition = condition_text
+        verify_target = consequence
       elseif consequence_is_unit and negated_inner then
         replacement_effect = alternative_text
         replacement_condition = negated_inner
+        verify_target = alternative
       else
         return {}
       end
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if ('
+          .. condition_text
+          .. ') effect else ZIO.unit with effect.when('
+          .. replacement_condition
+          .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement_effect .. '.when(' .. replacement_condition .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.when(' .. replacement_condition .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,
@@ -1787,22 +2205,42 @@ return {
 
       local replacement_effect
       local replacement_condition
+      local verify_target
       if alternative_is_unit and negated_inner then
         replacement_effect = consequence_text
         replacement_condition = negated_inner
+        verify_target = consequence
       elseif consequence_is_unit and not negated_inner then
         replacement_effect = alternative_text
         replacement_condition = condition_text
+        verify_target = alternative
       else
         return {}
       end
 
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
+        title = 'ZIO: replace if ('
+          .. condition_text
+          .. ') effect else ZIO.unit with effect.unless('
+          .. replacement_condition
+          .. ')',
+      }
+
       return {
-        {
-          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
-          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement_effect .. '.unless(' .. replacement_condition .. ')',
-          title = 'ZIO: replace if (' .. condition_text .. ') effect else ZIO.unit with effect.unless(' .. replacement_condition .. ')',
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+              if is_zio then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
         },
       }
     end,

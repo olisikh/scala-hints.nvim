@@ -84,7 +84,7 @@ describe('ZIO diagnostics/actions integration', function()
   -- succeed_unit, map_unit, zip_left_value, flat_map_value, map_value,
   -- catch_all_unit, or_else_fail, or_else_fail2 (all use async pending pattern)
   ---------------------------------------------------------------------------
-  describe('LSP-dependent queries with semantic.hover_predicate', function()
+  describe('LSP-dependent queries with semantic.type_definition_predicate', function()
     local lsp_cases = {
       {
         name = 'succeed_unit',
@@ -173,8 +173,8 @@ describe('ZIO diagnostics/actions integration', function()
     }
 
     for _, tc in ipairs(lsp_cases) do
-      it(tc.name .. ' -> diagnostic (hover=true)', function()
-        H.mock_hover_predicate(true)
+      it(tc.name .. ' -> diagnostic (type_definition=true)', function()
+        H.mock_type_definition_predicate(true)
         bufnr, root = H.parse_scala(tc.source)
         local diags = run_as_diagnostic(bufnr, root, tc.query_name, tc.query_def)
 
@@ -184,8 +184,8 @@ describe('ZIO diagnostics/actions integration', function()
         end
       end)
 
-      it(tc.name .. ' -> action (hover=true)', function()
-        H.mock_hover_predicate(true)
+      it(tc.name .. ' -> action (type_definition=true)', function()
+        H.mock_type_definition_predicate(true)
         bufnr, root = H.parse_scala(tc.source)
         local actions = run_as_action(bufnr, root, tc.query_name, tc.query_def)
 
@@ -198,20 +198,20 @@ describe('ZIO diagnostics/actions integration', function()
         end
       end)
 
-      it(tc.name .. ' -> diagnostic (hover=false)', function()
-        H.mock_hover_predicate(false)
+      it(tc.name .. ' -> diagnostic (type_definition=false)', function()
+        H.mock_type_definition_predicate(false)
         bufnr, root = H.parse_scala(tc.source)
         local diags = run_as_diagnostic(bufnr, root, tc.query_name, tc.query_def)
 
-        assert.are.equal(0, #diags, tc.name .. ': should produce 0 diagnostics when hover=false')
+        assert.are.equal(0, #diags, tc.name .. ': should produce 0 diagnostics when type_definition=false')
       end)
 
-      it(tc.name .. ' -> action (hover=false)', function()
-        H.mock_hover_predicate(false)
+      it(tc.name .. ' -> action (type_definition=false)', function()
+        H.mock_type_definition_predicate(false)
         bufnr, root = H.parse_scala(tc.source)
         local actions = run_as_action(bufnr, root, tc.query_name, tc.query_def)
 
-        assert.are.equal(0, #actions, tc.name .. ': should produce 0 actions when hover=false')
+        assert.are.equal(0, #actions, tc.name .. ': should produce 0 actions when type_definition=false')
       end)
     end
   end)
@@ -233,6 +233,7 @@ describe('ZIO diagnostics/actions integration', function()
 
     for _, tc in ipairs(range_cases) do
       it(tc.name .. ' has valid range (start <= end)', function()
+        H.mock_type_definition_predicate(true)
         bufnr, root = H.parse_scala(tc.source)
         local actions = run_as_action(bufnr, root, tc.name, tc.qd)
 

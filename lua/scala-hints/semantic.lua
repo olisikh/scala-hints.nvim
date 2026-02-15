@@ -2,47 +2,9 @@ local M = {}
 local logger = require('scala-hints.logger').new('semantic')
 
 local settings = {
-  hover_timeouts_ms = { 400, 1000, 2000 },
+  type_definition_timeouts_ms = { 400, 1000, 2000 },
   max_inflight = 4,
-  log_misses = true,
 }
-
-local function hover_contents_to_text(contents)
-  if contents == nil then
-    return nil
-  end
-
-  if type(contents) == 'string' then
-    return contents
-  end
-
-  if type(contents) ~= 'table' then
-    return tostring(contents)
-  end
-
-  if contents.value ~= nil then
-    return tostring(contents.value)
-  end
-
-  if contents.language ~= nil and contents.value ~= nil then
-    return tostring(contents.value)
-  end
-
-  local parts = {}
-  for _, item in ipairs(contents) do
-    if type(item) == 'string' then
-      table.insert(parts, item)
-    elseif type(item) == 'table' and item.value ~= nil then
-      table.insert(parts, tostring(item.value))
-    end
-  end
-
-  if #parts == 0 then
-    return nil
-  end
-
-  return table.concat(parts, '\n')
-end
 
 local function truncate_text(text, max_len)
   if text == nil then
@@ -81,8 +43,8 @@ local function buf_state(bufnr)
   if not s then
     s = {
       tick = 0,
-      cache = {}, -- key -> { tick, value }
-      inflight = {}, -- key -> { callbacks = {...}, started_at_tick }
+      cache = {}, -- key -> { tick, uris }
+      inflight = {}, -- key -> { callbacks = {{predicate, cb}, ...}, tick, done }
       queue = {}, -- array of jobs
       inflight_n = 0,
     }
@@ -95,6 +57,37 @@ local function make_key(method, start_row, start_col, end_row, end_col)
   return table.concat({ method, start_row, start_col, end_row, end_col }, ':')
 end
 
+local function collect_location_uris(result)
+  if result == nil then
+    return nil
+  end
+
+  local uris = {}
+  local function add_uri(item)
+    if type(item) ~= 'table' then
+      return
+    end
+    local uri = item.targetUri or item.uri
+    if type(uri) == 'string' and uri ~= '' then
+      table.insert(uris, uri)
+    end
+  end
+
+  if vim.islist(result) then
+    for _, item in ipairs(result) do
+      add_uri(item)
+    end
+  else
+    add_uri(result)
+  end
+
+  if #uris == 0 then
+    return nil
+  end
+
+  return uris
+end
+
 local function pump(bufnr)
   local s = buf_state(bufnr)
 
@@ -105,7 +98,7 @@ local function pump(bufnr)
     local key = job.key
     s.inflight[key] = { callbacks = job.callbacks, tick = job.tick, done = false }
 
-    local done = function(value, cache_ok, cache_reason)
+    local done = function(uris, cache_ok, cache_reason)
       local infl = s.inflight[key]
       if not infl or infl.done then
         return
@@ -115,23 +108,24 @@ local function pump(bufnr)
       s.inflight[key] = nil
       s.inflight_n = s.inflight_n - 1
 
-      -- cache only if still same tick and value is cacheable + true
-      if cache_ok ~= false and value == true and vim.api.nvim_buf_is_valid(bufnr) then
+      -- cache the raw URIs (not the predicate result) so different predicates
+      -- can evaluate them independently on cache hits
+      if cache_ok ~= false and uris ~= nil and vim.api.nvim_buf_is_valid(bufnr) then
         local cur_tick = vim.api.nvim_buf_get_changedtick(bufnr)
         if cur_tick == job.tick then
-          s.cache[key] = { tick = job.tick, value = value }
+          s.cache[key] = { tick = job.tick, uris = uris }
         end
       else
         local reason = cache_reason
         if cache_ok == false then
           reason = cache_reason or 'uncacheable'
-        elseif value ~= true then
-          reason = 'false'
+        elseif uris == nil then
+          reason = 'no-uris'
         end
         if reason ~= nil then
           logger.debug(
             string.format(
-              'hover result not cached (%s) for %s:%d:%d:%d:%d',
+              'type_definition result not cached (%s) for %s:%d:%d:%d:%d',
               reason,
               job.method,
               job.sr,
@@ -144,23 +138,27 @@ local function pump(bufnr)
         end
       end
 
-      -- no retry hook: hover misses are logged only
-
-      for _, cb in ipairs(job.callbacks) do
-        pcall(cb, value)
+      -- Each callback receives the raw URIs and applies its own predicate
+      for _, entry in ipairs(job.callbacks) do
+        local predicate_result = false
+        if uris then
+          for _, uri in ipairs(uris) do
+            if entry.predicate(uri) then
+              predicate_result = true
+              break
+            end
+          end
+        end
+        pcall(entry.cb, predicate_result)
       end
 
       pump(bufnr)
     end
 
     local function log_miss(reason)
-      if not settings.log_misses then
-        return
-      end
-
       logger.debug(
         string.format(
-          'hover miss (%s) for %s:%d:%d:%d:%d after %d attempt(s)',
+          'type_definition miss (%s) for %s:%d:%d:%d:%d after %d attempt(s)',
           reason,
           job.method,
           job.sr,
@@ -180,7 +178,7 @@ local function pump(bufnr)
 
       logger.debug(
         string.format(
-          'hover attempt %d/%d for %s:%d:%d:%d:%d (timeout=%dms)',
+          'type_definition attempt %d/%d for %s:%d:%d:%d:%d (timeout=%dms)',
           idx,
           #job.timeouts,
           job.method,
@@ -203,7 +201,7 @@ local function pump(bufnr)
           run_attempt(idx + 1)
         else
           log_miss('timeout')
-          done(false, false, 'timeout')
+          done(nil, false, 'timeout')
         end
       end, timeout_ms)
 
@@ -218,30 +216,29 @@ local function pump(bufnr)
             run_attempt(idx + 1)
           else
             log_miss(tostring(err))
-            done(false, false, tostring(err))
+            done(nil, false, tostring(err))
           end
           return
         end
 
-        local eval_ok = job.eval(result)
-        local text = result ~= nil and hover_contents_to_text(result.contents) or nil
-        logger.debug(
+        local uris = collect_location_uris(result)
+        local debug_text = uris and table.concat(uris, '\n') or nil
+        logger.info(
           string.format(
-            'hover result for %s:%d:%d:%d:%d -> %s (text=%s)',
+            'request result for %s:%d:%d:%d:%d -> uris=%s',
             job.method,
             job.sr,
             job.sc,
             job.er,
             job.ec,
-            tostring(eval_ok),
-            truncate_text(text, 300) or 'nil'
+            truncate_text(debug_text, 300) or 'nil'
           ),
           { bufnr = bufnr }
         )
-        if text == nil then
-          done(false, false, 'no-hover')
+        if not uris then
+          done(nil, false, 'no-definition')
         else
-          done(eval_ok, true)
+          done(uris, true)
         end
       end)
     end
@@ -250,12 +247,15 @@ local function pump(bufnr)
   end
 end
 
---- Request a hover-derived boolean predicate check, with callback
+--- Request a typeDefinition-derived boolean predicate check, with callback.
+--- The underlying LSP result (URI list) is cached per position so that multiple
+--- callers with different predicates (e.g. is_zio_type, is_ce_type) each get
+--- their own predicate evaluated against the same cached URIs.
 ---@param bufnr integer buffer number
----@param node TSNode|nil node to hover on
----@param predicate fun(value: string): boolean predicate to match against hover contents
+---@param node TSNode|nil node to resolve
+---@param predicate fun(value: string): boolean predicate to match against location URI
 ---@param cb fun(result: boolean) callback with the predicate result
-function M.hover_predicate(bufnr, node, predicate, cb)
+function M.type_definition_predicate(bufnr, node, predicate, cb)
   if not node then
     cb(false)
     return
@@ -268,36 +268,62 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   local s = buf_state(bufnr)
   local tick = vim.api.nvim_buf_get_changedtick(bufnr)
 
-  local sr, sc, er, ec = node:range()
-  local key = make_key('textDocument/hover', sr, sc, er, ec)
+  -- Retarget: when the node is the receiver in a field_expression (e.g. `expr.map`),
+  -- resolve typeDefinition on the method identifier (`map`) instead of the receiver.
+  -- This ensures Metals returns the definition of the method (e.g. ZIO#map in zio/ZIO.scala)
+  -- rather than the type of the receiver itself (which could be a non-ZIO/CE type).
+  local target = node
+  local parent = node:parent()
+  if parent and parent:type() == 'field_expression' then
+    local field = parent:field('field')[1]
+    if field then
+      logger.debug(
+        string.format('retarget typeDefinition from %s to field %s', node:type(), field:type()),
+        { bufnr = bufnr }
+      )
+      target = field
+    end
+  end
 
-  -- cache hit (same tick)
+  local sr, sc, er, ec = target:range()
+  local key = make_key('textDocument/typeDefinition', sr, sc, er, ec)
+
+  -- Cache hit: evaluate THIS caller's predicate against the cached URIs
   local cached = s.cache[key]
   if cached and cached.tick == tick then
+    local hit = false
+    if cached.uris then
+      for _, uri in ipairs(cached.uris) do
+        if predicate(uri) then
+          hit = true
+          break
+        end
+      end
+    end
     logger.debug(
       string.format(
-        'hover cache hit for %s:%d:%d:%d:%d -> %s',
-        'textDocument/hover',
+        'typeDefinition cache hit for %s:%d:%d:%d:%d -> %s',
+        'textDocument/typeDefinition',
         sr,
         sc,
         er,
         ec,
-        tostring(cached.value)
+        tostring(hit)
       ),
       { bufnr = bufnr }
     )
-    cb(cached.value)
+    cb(hit)
     return
   end
 
-  -- inflight dedupe
+  -- Inflight join: attach this caller's predicate+cb so it gets its own evaluation
   local infl = s.inflight[key]
   if infl and infl.tick == tick then
     logger.debug(
-      string.format('hover inflight join for %s:%d:%d:%d:%d', 'textDocument/hover', sr, sc, er, ec),
+      string.format('typeDefinition inflight join for %s:%d:%d:%d:%d', 'textDocument/typeDefinition', sr, sc, er, ec),
       { bufnr = bufnr }
     )
-    table.insert(infl.callbacks, cb)
+    table.insert(infl.callbacks, { predicate = predicate, cb = cb })
     return
   end
 
@@ -305,7 +331,14 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   local metals = clients[1]
   if not metals then
     logger.warn(
-      string.format('hover skipped: no Metals client for %s:%d:%d:%d:%d', 'textDocument/hover', sr, sc, er, ec),
+      string.format(
+        'typeDefinition skipped: no Metals client for %s:%d:%d:%d:%d',
+        'textDocument/typeDefinition',
+        sr,
+        sc,
+        er,
+        ec
+      ),
       { bufnr = bufnr }
     )
     cb(false)
@@ -320,21 +353,17 @@ function M.hover_predicate(bufnr, node, predicate, cb)
   local job = {
     key = key,
     tick = tick,
-    method = 'textDocument/hover',
+    method = 'textDocument/typeDefinition',
     params = params,
-    request = function(cb)
-      metals.request('textDocument/hover', params, cb, bufnr)
+    request = function(req_cb)
+      metals.request('textDocument/typeDefinition', params, req_cb, bufnr)
     end,
-    callbacks = { cb },
-    timeouts = settings.hover_timeouts_ms,
+    callbacks = { { predicate = predicate, cb = cb } },
+    timeouts = settings.type_definition_timeouts_ms,
     sr = sr,
     sc = sc,
     er = er,
     ec = ec,
-    eval = function(result)
-      local text = result ~= nil and hover_contents_to_text(result.contents) or nil
-      return text ~= nil and predicate(text)
-    end,
   }
 
   table.insert(s.queue, job)
@@ -347,32 +376,27 @@ function M.reset(bufnr)
   state[bufnr] = nil
 end
 
---- Configure semantic hover behavior.
+--- Configure semantic behavior.
 ---@param opts table|nil
----  - hover: table
+---  - type_definition: table
 ---    - timeouts_ms: number[]
----    - log_misses: boolean
 function M.configure(opts)
   if type(opts) ~= 'table' then
     return
   end
 
-  local hover = opts.hover
-  if type(hover) ~= 'table' then
+  local td = opts.type_definition
+  if type(td) ~= 'table' then
     return
   end
 
-  local timeouts = normalize_timeouts(hover.timeouts_ms)
+  local timeouts = normalize_timeouts(td.timeouts_ms)
   if timeouts then
-    settings.hover_timeouts_ms = timeouts
+    settings.type_definition_timeouts_ms = timeouts
   end
 
-  if type(hover.max_inflight) == 'number' and hover.max_inflight > 0 then
-    settings.max_inflight = hover.max_inflight
-  end
-
-  if type(hover.log_misses) == 'boolean' then
-    settings.log_misses = hover.log_misses
+  if type(td.max_inflight) == 'number' and td.max_inflight > 0 then
+    settings.max_inflight = td.max_inflight
   end
 end
 

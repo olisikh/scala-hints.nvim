@@ -2,22 +2,25 @@
 
 ## 1. Project Overview
 
-`scala-hints.nvim` is a Neovim plugin that provides opinionated diagnostics and quickfix code actions for ZIO-based Scala code. It uses Treesitter for AST pattern matching, Metals LSP for type verification, and native Neovim diagnostics/code-action APIs.
+`scala-hints.nvim` is a Neovim plugin that provides opinionated diagnostics and quickfix code actions for effect-library Scala code (currently ZIO). It uses Treesitter for AST pattern matching, Metals LSP for type verification, and native Neovim diagnostics/code-action APIs.
 
 ## 2. Architecture
 
 ```text
-  BufWritePost / BufEnter            vim.lsp.buf.code_action()
-         |                                  |
-         v                                  v
-  diagnostics.lua                     actions.lua
-         \                                /
-          +------ query.run_query -------+
-                        |
-                handler(bufnr, matches)
-                        |
-           +------------+------------+
-           |                         |
+  LspAttach (Metals)
+    |
+    v
+      client.lua (in-process LSP)
+    |                          |
+    v                          v
+  didOpen/didSave -> diagnostics.lua    textDocument/codeAction -> actions.lua
+    \                                  /
+     +------ query.run_query ---------+
+         |
+      handler(bufnr, matches)
+         |
+      +------------+------------+
+      |                         |
   vim.diagnostic.set()     LSP code-action response
 ```
 
@@ -27,25 +30,26 @@
 
 | Module | Purpose |
 | :--- | :--- |
-| `init.lua` | Entry point; registers namespace, Metals-gated autocommands, code-action wrapper |
+| `init.lua` | Entry point; registers LspAttach autocommand and starts in-process client |
 | `diagnostics.lua` | Orchestrates diagnostic collection by running Treesitter queries |
 | `actions.lua` | Resolves code actions for a given range |
 | `query.lua` | Generic Treesitter query execution engine |
+| `libs/init.lua` | Library registry; merges queries with `lib/query` namespacing |
 | `libs/zio/queries.lua` | All 35 ZIO query definitions and handlers |
-| `libs/zio/init.lua` | ZIO query registry |
-| `semantic.lua` | LSP hover verification, caching, and `hover_predicate` |
-| `client.lua` | LSP client management |
-| `utils.lua` | Async helpers, node inspection, Metals readiness polling |
+| `libs/zio/init.lua` | ZIO library module (name + queries table) |
+| `semantic.lua` | LSP type definition verification, caching, and `type_definition_predicate` |
+| `client.lua` | In-process LSP client; publishes diagnostics and code actions |
+| `utils.lua` | Async helpers, node inspection |
 | `logger.lua` | File-based logging |
 | `constants.lua` | Shared metadata (namespace name, filetype) |
 
 ### Query Handler Flow
 
-1. **Trigger**: `MetalsReady` / `MetalsInitialized` autocommands register the diagnostic autocommand and code-action wrapper.
+1. **Trigger**: `LspAttach` for Metals starts the in-process client; diagnostics refresh on `textDocument/didOpen` and `textDocument/didSave`.
 2. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over queries.
 3. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
 4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua`.
-5. **Verification**: LSP-dependent handlers call `semantic.hover_predicate` to confirm ZIO types via Metals hover.
+5. **Verification**: All handlers call `semantic.type_definition_predicate` to confirm ZIO/ZLayer types via Metals `textDocument/typeDefinition`.
 6. **Result**: Diagnostics feed `vim.diagnostic.set()`; code actions flow through the wrapped LSP handler.
 
 ## 3. Pattern Catalog
@@ -95,22 +99,29 @@
 | Pattern | Description | Complexity |
 | :--- | :--- | :--- |
 | Type Modes | `CanFail`, `NeedsEnv`, contravariance | High |
-| Advanced | Wrapping `Option/Future/Try`, yield in for-comprehension | High |
+| If-Guard Detection | For-comprehension guard patterns | High |
+| Wrap Conversions | Wrapping `Option/Future/Try/Either` | High |
+| Yield Effect | Yielding a ZIO effect in for-comprehension | High |
+
+### Cats-Effect Roadmap
+
+Cats-Effect patterns are scoped in [CATS_EFFECT.md](CATS_EFFECT.md). The plan is to implement them as a new library module under `lua/scala-hints/libs/` and register it in the library registry.
 
 ## 4. Technical Details
 
 - **Treesitter queries** use S-expressions with `#eq?` and `#any-of?` predicates.
-- **Async**: All queries run via `plenary.async`; `semantic.hover_predicate` retries hover with configurable backoff (default 400/1000/2000 ms).
-- **Metals readiness**: Waits for `MetalsReady` / `MetalsInitialized` autocommands before registering diagnostics.
+- **Async**: All queries run via `plenary.async`; `semantic.type_definition_predicate` retries with configurable backoff (default 400/1000/2000 ms).
+- **Metals readiness**: Diagnostics are published only when a Metals client is attached and initialized; the in-process client refreshes on `didOpen`/`didSave`.
 - **Timeouts**: Diagnostics 30s, code actions 10s, Metals readiness 10s.
-- **Hover caching**: Results cached per buffer tick to avoid redundant LSP calls.
-- **Type checking**: Hover results matched against `is_zio_type` predicate (checks for `ZIO[`, `UIO[`, `IO[`, `Task[`, etc.).
+- **Type definition caching**: Results cached per buffer tick to avoid redundant LSP calls.
+- **Type checking**: Type definition URIs matched against `is_zio_type` predicate (checks for `/zio/` in URI path) or `is_zlayer_type` (same URI check).
+- All handlers verify types via Metals `textDocument/typeDefinition`; when Metals is unavailable, hints are suppressed.
 
 ## 5. Known Limitations
 
 - Patterns match literal names only (`ZIO`); type aliases and renamed imports are not recognized.
 - Some queries are whitespace-sensitive (e.g., `ZIO\n.unit` may not match).
-- Not all handlers verify types via Metals, which can cause false positives on non-ZIO code.
+- All handlers verify types via Metals when available; when Metals is unavailable, hints are suppressed.
 - Diagnostics may not refresh after undo operations.
 - Performance may degrade on very large files due to lack of incremental parsing.
 
@@ -121,9 +132,9 @@
    - Write the Treesitter S-expression query.
    - Implement the `handler` function to extract ranges and suggest replacements.
    - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
-3. Register the query name in `lua/scala-hints/libs/zio/init.lua`.
-4. Optionally use `semantic.hover_predicate` for type verification.
-5. Add tests in `tests/zio/pure_queries_spec.lua` (or `lsp_queries_spec.lua` for LSP-dependent patterns).
+3. Register the query name in `lua/scala-hints/libs/zio/init.lua`. For a new library, add a module and register it in `lua/scala-hints/libs/init.lua`.
+4. Use `semantic.type_definition_predicate` for type verification.
+5. Add tests in `tests/zio/queries_spec.lua` (mock with `H.mock_type_definition_predicate(true)`). For new libraries, add `tests/<lib>/queries_spec.lua` and update `tests/libs_registry_spec.lua`.
 6. Update the pattern catalog above.
 
 ### Treesitter Query Example
