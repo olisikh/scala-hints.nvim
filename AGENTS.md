@@ -2,7 +2,7 @@
 
 ## 1. Project Overview
 
-`scala-hints.nvim` is a Neovim plugin that provides opinionated diagnostics and quickfix code actions for effect-library Scala code (currently ZIO). It uses Treesitter for AST pattern matching, Metals LSP for type verification, and native Neovim diagnostics/code-action APIs.
+`scala-hints.nvim` is a Neovim plugin that provides opinionated diagnostics and quickfix code actions for effect-library Scala code (ZIO and Cats-Effect IO/Resource). It uses Treesitter for AST pattern matching, Metals LSP for type verification, and native Neovim diagnostics/code-action APIs.
 
 ## 2. Architecture
 
@@ -37,6 +37,8 @@
 | `libs/init.lua` | Library registry; merges queries with `lib/query` namespacing |
 | `libs/zio/queries.lua` | All 35 ZIO query definitions and handlers |
 | `libs/zio/init.lua` | ZIO library module (name + queries table) |
+| `libs/cats-effect/queries.lua` | All 36 Cats-Effect query definitions and handlers |
+| `libs/cats-effect/init.lua` | Cats-Effect library module (name + queries table) |
 | `semantic.lua` | LSP type definition verification, caching, and `type_definition_predicate` |
 | `client.lua` | In-process LSP client; publishes diagnostics and code actions |
 | `utils.lua` | Async helpers, node inspection |
@@ -48,13 +50,13 @@
 1. **Trigger**: `LspAttach` for Metals starts the in-process client; diagnostics refresh on `textDocument/didOpen` and `textDocument/didSave`.
 2. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over queries.
 3. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
-4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua`.
-5. **Verification**: All handlers call `semantic.type_definition_predicate` to confirm ZIO/ZLayer types via Metals `textDocument/typeDefinition`.
+4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua` or `libs/cats-effect/queries.lua`.
+5. **Verification**: All handlers call `semantic.type_definition_predicate` to confirm ZIO/ZLayer or Cats-Effect IO/Resource types via Metals `textDocument/typeDefinition`.
 6. **Result**: Diagnostics feed `vim.diagnostic.set()`; code actions flow through the wrapped LSP handler.
 
 ## 3. Pattern Catalog
 
-35 patterns implemented in [libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
+35 ZIO patterns implemented in [libs/zio/queries.lua](lua/scala-hints/libs/zio/queries.lua):
 
 | Pattern | Detection | Replacement |
 | :--- | :--- | :--- |
@@ -94,6 +96,11 @@
 | `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` |
 | `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` |
 
+### Cats-Effect Patterns (IO/Resource)
+
+36 Cats-Effect patterns implemented in [libs/cats-effect/queries.lua](lua/scala-hints/libs/cats-effect/queries.lua).
+Examples and motivation live in the tests under `tests/cats_effect/`.
+
 ### Remaining IntelliJ Parity Gaps
 
 | Pattern | Description | Complexity |
@@ -103,9 +110,9 @@
 | Wrap Conversions | Wrapping `Option/Future/Try/Either` | High |
 | Yield Effect | Yielding a ZIO effect in for-comprehension | High |
 
-### Cats-Effect Roadmap
+### Cats-Effect Status
 
-Cats-Effect patterns are scoped in [CATS_EFFECT.md](CATS_EFFECT.md). The plan is to implement them as a new library module under `lua/scala-hints/libs/` and register it in the library registry.
+Cats-Effect (IO/Resource) patterns are implemented under `lua/scala-hints/libs/cats-effect/` and registered in the library registry.
 
 ## 4. Technical Details
 
@@ -114,7 +121,7 @@ Cats-Effect patterns are scoped in [CATS_EFFECT.md](CATS_EFFECT.md). The plan is
 - **Metals readiness**: Diagnostics are published only when a Metals client is attached and initialized; the in-process client refreshes on `didOpen`/`didSave`.
 - **Timeouts**: Diagnostics 30s, code actions 10s, Metals readiness 10s.
 - **Type definition caching**: Results cached per buffer tick to avoid redundant LSP calls.
-- **Type checking**: Type definition URIs matched against `is_zio_type` predicate (checks for `/zio/` in URI path) or `is_zlayer_type` (same URI check).
+- **Type checking**: Type definition URIs matched against `is_zio_type`/`is_zlayer_type` or `is_cats_io_type` predicates.
 - All handlers verify types via Metals `textDocument/typeDefinition`; when Metals is unavailable, hints are suppressed.
 
 ## 5. Known Limitations
@@ -128,13 +135,15 @@ Cats-Effect patterns are scoped in [CATS_EFFECT.md](CATS_EFFECT.md). The plan is
 ## 6. Adding a New Pattern
 
 1. Use `:InspectTree` in Neovim to see the AST for the code you want to match.
-2. Add a new entry to the queries table in `lua/scala-hints/libs/zio/queries.lua`:
+2. Add a new entry to the queries table in the appropriate library:
+  - ZIO: `lua/scala-hints/libs/zio/queries.lua`
+  - Cats-Effect: `lua/scala-hints/libs/cats-effect/queries.lua`
    - Write the Treesitter S-expression query.
    - Implement the `handler` function to extract ranges and suggest replacements.
    - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
-3. Register the query name in `lua/scala-hints/libs/zio/init.lua`. For a new library, add a module and register it in `lua/scala-hints/libs/init.lua`.
+3. Register the query name in the library module (`lua/scala-hints/libs/zio/init.lua` or `lua/scala-hints/libs/cats-effect/init.lua`). For a new library, add a module and register it in `lua/scala-hints/libs/init.lua`.
 4. Use `semantic.type_definition_predicate` for type verification.
-5. Add tests in `tests/zio/queries_spec.lua` (mock with `H.mock_type_definition_predicate(true)`). For new libraries, add `tests/<lib>/queries_spec.lua` and update `tests/libs_registry_spec.lua`.
+5. Add tests in `tests/zio/queries_spec.lua` or `tests/cats_effect/queries_spec.lua` (mock with `H.mock_type_definition_predicate(true)`). For new libraries, add `tests/<lib>/queries_spec.lua` and update `tests/libs_registry_spec.lua`.
 6. Update the pattern catalog above.
 
 ### Treesitter Query Example

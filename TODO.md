@@ -1,8 +1,9 @@
 # TODO: IntelliJ ZIO Plugin Parity Roadmap
 
-## Completed (35 patterns)
+## Completed
 
-All low- and medium-complexity patterns are implemented. See `AGENTS.md` §5.1 for the full pattern catalog.
+- ZIO: 35 patterns (low/medium parity). See `AGENTS.md` for the pattern catalog.
+- Cats-Effect (IO/Resource): 36 patterns implemented. See `AGENTS.md`.
 
 ## Future Work
 
@@ -23,11 +24,12 @@ All low- and medium-complexity patterns are implemented. See `AGENTS.md` §5.1 f
 - Detect yielding a ZIO effect without flatMapping
 - Suggest `flatten` or appropriate combinator
 
-### Cats-Effect Tagless-Final TODOs 🔴
+### Cats-Effect Tagless-Final (F[_]) Gaps 🔴
 - Add evidence-based patterns for `F[_]` where typeclass support must be proven via Metals `textDocument/typeDefinition`.
-- Candidate patterns: `void`, `as`, `*>` / `>>`, `whenA` / `unlessA`, `ifM`, `raiseWhen` / `raiseUnless`,
-  `fromOption` / `fromEither` / `fromTry`, `handleError` / `handleErrorWith`, `redeem` / `redeemWith`,
-  `flatTap`, `delayBy`, `timeout` / `timeoutTo`, `tupled` / `parTupled`, `parTraverse`, `replicateA_`, `foreverM`.
+- Candidate patterns mirror the IO/Resource catalog: `void`, `as`, `*>` / `>>`, `whenA` / `unlessA`, `ifM`,
+  `raiseWhen` / `raiseUnless`, `fromOption` / `fromEither` / `fromTry`, `handleError` / `handleErrorWith`,
+  `redeem` / `redeemWith`, `flatTap`, `delayBy`, `timeout` / `timeoutTo`, `tupled` / `parTupled`,
+  `parTraverse`, `replicateA_`, `foreverM`.
 - Requires confirming `Functor`/`Apply`/`Monad`/`MonadError`/`Temporal`/`Parallel` evidence before emitting hints.
 
 ## Known Limitations
