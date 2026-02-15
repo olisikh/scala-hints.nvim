@@ -1705,6 +1705,9 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tap(' .. param_text .. ' => ' .. body_text .. ')'
 
+      -- First body expression must be a ZIO effect for .tap to be valid
+      local first_body_expr = body_block:named_child(0)
+
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
@@ -1717,11 +1720,17 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
-              if is_zio then
-                done(item)
-              else
+              if not is_zio then
                 done(nil)
+                return
               end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+                if body_is_zio then
+                  done(item)
+                else
+                  done(nil)
+                end
+              end)
             end)
           end,
         },
@@ -1787,6 +1796,9 @@ return {
       local body_text = table.concat(body_parts, '; ')
       local replacement = 'tapError(' .. param_text .. ' => ' .. body_text .. ')'
 
+      -- First body expression must be a ZIO effect for .tapError to be valid
+      local first_body_expr = body_block:named_child(0)
+
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
@@ -1799,11 +1811,17 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
-              if is_zio then
-                done(item)
-              else
+              if not is_zio then
                 done(nil)
+                return
               end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+                if body_is_zio then
+                  done(item)
+                else
+                  done(nil)
+                end
+              end)
             end)
           end,
         },
@@ -1976,6 +1994,10 @@ return {
         ok_side = first_side
       end
 
+      -- First body expressions must be ZIO effects for .tapBoth to be valid
+      local first_body_expr = first_body:named_child(0)
+      local second_body_expr = second_body:named_child(0)
+
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
 
@@ -2001,11 +2023,23 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
-              if is_zio then
-                done(item)
-              else
+              if not is_zio then
                 done(nil)
+                return
               end
+              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body1_is_zio)
+                if not body1_is_zio then
+                  done(nil)
+                  return
+                end
+                semantic.type_definition_predicate(bufnr, second_body_expr, is_zio_type, function(body2_is_zio)
+                  if body2_is_zio then
+                    done(item)
+                  else
+                    done(nil)
+                  end
+                end)
+              end)
             end)
           end,
         },
