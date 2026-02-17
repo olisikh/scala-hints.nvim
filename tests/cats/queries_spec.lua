@@ -89,6 +89,47 @@ describe('Cats tagless queries', function()
     end)
   end)
 
+  describe('unless_a', function()
+    it('matches if (!cond) fa else F.unit when Applicative evidence exists', function()
+      local source = [=[
+        def foo[F[_]: Applicative](cond: Boolean, fa: F[Int]) = if (!cond) fa else F.unit
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.unless_a)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'fa.unlessA(cond)',
+      })
+    end)
+
+    it('matches if (cond) F.unit else fa when Applicative evidence exists', function()
+      local source = [=[
+        def foo[F[_]: Applicative](cond: Boolean, fa: F[Int]) = if (cond) F.unit else fa
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.unless_a)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'fa.unlessA(cond)',
+      })
+    end)
+
+    it('does not match without Applicative evidence', function()
+      local source = [=[
+        def foo[F[_]](cond: Boolean, fa: F[Int]) = if (cond) F.unit else fa
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.unless_a)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
   describe('if_m', function()
     it('matches flatMap(b => if (b) fa else fc) when Monad evidence exists', function()
       local source = [=[

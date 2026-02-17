@@ -399,4 +399,60 @@ return {
       }
     end,
   },
+
+  -- if (!cond) fa else F.unit ~> fa.unlessA(cond)
+  -- if (cond) F.unit else fa ~> fa.unlessA(cond)
+  unless_a = {
+    query = parse_query([[ 
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (_) @_3
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local consequence = matches[2][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
+
+      local start_row, start_col, end_row, end_col = node:range()
+
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_tagless_unit_text(consequence_text)
+      local alternative_is_unit = is_tagless_unit_text(alternative_text)
+
+      local replacement_effect, replacement_condition, verify_target
+      if alternative_is_unit and negated_inner then
+        replacement_effect = consequence_text
+        replacement_condition = negated_inner
+        verify_target = consequence
+      elseif consequence_is_unit and not negated_inner then
+        replacement_effect = alternative_text
+        replacement_condition = condition_text
+        verify_target = alternative
+      else
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, verify_target, 'Applicative') then
+        return {}
+      end
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement_effect .. '.unlessA(' .. replacement_condition .. ')',
+          title = 'Cats: replace if (...) F.unit with effect.unlessA(...)',
+        },
+      }
+    end,
+  },
+
 }
