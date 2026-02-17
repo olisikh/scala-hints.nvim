@@ -166,3 +166,60 @@ describe('Cats tagless queries', function()
     end)
   end)
 end)
+  describe('raise_when', function()
+    it('matches if (cond) F.raiseError(err) else F.unit when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]](cond: Boolean, err: Throwable)(implicit F: MonadError[F, Throwable]) =
+          if (cond) F.raiseError(err) else F.unit
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.raise_when)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'F.raiseWhen(cond)(err)',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](cond: Boolean, err: Throwable) =
+          if (cond) F.raiseError(err) else F.unit
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.raise_when)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  describe('raise_unless', function()
+    it('matches if (!cond) F.raiseError(err) else F.unit when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]](cond: Boolean, err: Throwable)(implicit F: MonadError[F, Throwable]) =
+          if (!cond) F.raiseError(err) else F.unit
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.raise_unless)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'F.raiseUnless(cond)(err)',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](cond: Boolean, err: Throwable) =
+          if (!cond) F.raiseError(err) else F.unit
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.raise_unless)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)

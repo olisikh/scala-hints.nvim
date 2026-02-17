@@ -104,6 +104,29 @@ local function is_tagless_unit_text(text)
   return false
 end
 
+local function extract_raise_error_info(bufnr, node)
+  if not node then
+    return nil
+  end
+
+  local text = unwrap_single_expression_block(bufnr, node)
+  if not text then
+    return nil
+  end
+
+  local prefix = text:match('^(.-)%.raiseError')
+  if not prefix or vim.trim(prefix) == '' then
+    return nil
+  end
+
+  local argument = text:match('%.raiseError%((.+)%)')
+  if not argument then
+    return nil
+  end
+
+  return vim.trim(prefix), vim.trim(argument)
+end
+
 return {
   -- fa.map(_ => ()) ~> fa.void
   map_unit = {
@@ -280,6 +303,64 @@ return {
     end,
   },
 
+  -- if (!cond) fa else F.unit ~> fa.unlessA(cond)
+  -- if (cond) F.unit else fa ~> fa.unlessA(cond)
+  unless_a = {
+    query = parse_query([[
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (_) @_3
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local consequence = matches[2][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
+
+      local start_row, start_col, end_row, end_col = node:range()
+
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_tagless_unit_text(consequence_text)
+      local alternative_is_unit = is_tagless_unit_text(alternative_text)
+
+      local replacement_effect
+      local replacement_condition
+      local verify_target
+
+      if alternative_is_unit and negated_inner then
+        replacement_effect = consequence_text
+        replacement_condition = negated_inner
+        verify_target = consequence
+      elseif consequence_is_unit and not negated_inner then
+        replacement_effect = alternative_text
+        replacement_condition = condition_text
+        verify_target = alternative
+      else
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, verify_target, 'Applicative') then
+        return {}
+      end
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = replacement_effect .. '.unlessA(' .. replacement_condition .. ')',
+          title = 'Cats: replace if (...) F.unit with effect.unlessA(...)',
+        },
+      }
+    end,
+  },
+
   -- fb.flatMap(b => if (b) fa else fc) ~> fb.ifM(fa, fc)
   if_m = {
     query = parse_query([[
@@ -399,11 +480,9 @@ return {
       }
     end,
   },
-
-  -- if (!cond) fa else F.unit ~> fa.unlessA(cond)
-  -- if (cond) F.unit else fa ~> fa.unlessA(cond)
-  unless_a = {
-    query = parse_query([[ 
+  -- if (cond) F.raiseError(err) else F.unit ~> F.raiseWhen(cond)(err)
+  raise_when = {
+    query = parse_query([[
 (if_expression
   condition: (_) @_1
   consequence: (_) @_2
@@ -427,20 +506,25 @@ return {
       local consequence_is_unit = is_tagless_unit_text(consequence_text)
       local alternative_is_unit = is_tagless_unit_text(alternative_text)
 
-      local replacement_effect, replacement_condition, verify_target
-      if alternative_is_unit and negated_inner then
-        replacement_effect = consequence_text
-        replacement_condition = negated_inner
-        verify_target = consequence
-      elseif consequence_is_unit and not negated_inner then
-        replacement_effect = alternative_text
+      local error_node
+      local replacement_condition
+
+      if alternative_is_unit and not consequence_is_unit and not negated_inner then
+        error_node = consequence
         replacement_condition = condition_text
-        verify_target = alternative
+      elseif consequence_is_unit and not alternative_is_unit and negated_inner then
+        error_node = alternative
+        replacement_condition = negated_inner
       else
         return {}
       end
 
-      if not evidence.has_capability(bufnr, verify_target, 'Applicative') then
+      local prefix, error_text = extract_raise_error_info(bufnr, error_node)
+      if not prefix or not error_text then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, error_node, 'MonadError') then
         return {}
       end
 
@@ -448,11 +532,68 @@ return {
         {
           diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
           action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = replacement_effect .. '.unlessA(' .. replacement_condition .. ')',
-          title = 'Cats: replace if (...) F.unit with effect.unlessA(...)',
+          replacement = prefix .. '.raiseWhen(' .. replacement_condition .. ')(' .. error_text .. ')',
+          title = 'Cats: replace if (...) raiseError/F.unit with raiseWhen',
         },
       }
     end,
   },
+  -- if (cond) F.unit else F.raiseError(err) ~> F.raiseUnless(cond)(err)
+  raise_unless = {
+    query = parse_query([[
+(if_expression
+  condition: (_) @_1
+  consequence: (_) @_2
+  alternative: (_) @_3
+) @_6
+]]),
+    handler = function(bufnr, matches)
+      local condition = matches[1][1]
+      local consequence = matches[2][1]
+      local alternative = matches[3][1]
+      local node = matches[4][1]
 
+      local start_row, start_col, end_row, end_col = node:range()
+
+      local condition_text = normalize_condition_text(utils.get_node_text(bufnr, condition))
+      local negated_inner = strip_negation(condition_text)
+
+      local consequence_text = unwrap_single_expression_block(bufnr, consequence)
+      local alternative_text = unwrap_single_expression_block(bufnr, alternative)
+
+      local consequence_is_unit = is_tagless_unit_text(consequence_text)
+      local alternative_is_unit = is_tagless_unit_text(alternative_text)
+
+      local error_node
+      local replacement_condition
+
+      if consequence_is_unit and not alternative_is_unit and not negated_inner then
+        error_node = alternative
+        replacement_condition = condition_text
+      elseif alternative_is_unit and not consequence_is_unit and negated_inner then
+        error_node = consequence
+        replacement_condition = negated_inner
+      else
+        return {}
+      end
+
+      local prefix, error_text = extract_raise_error_info(bufnr, error_node)
+      if not prefix or not error_text then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, error_node, 'MonadError') then
+        return {}
+      end
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = prefix .. '.raiseUnless(' .. replacement_condition .. ')(' .. error_text .. ')',
+          title = 'Cats: replace if (...) unit/raiseError with raiseUnless',
+        },
+      }
+    end,
+  },
 }
