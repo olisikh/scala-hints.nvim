@@ -596,4 +596,122 @@ return {
       }
     end,
   },
+  -- opt.fold(F.raiseError(err))(F.pure) ~> F.fromOption(opt)(err)
+  from_option = {
+    query = parse_query([[
+(call_expression
+  function: (call_expression
+    function: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "fold")
+    )
+    arguments: (arguments
+      (call_expression
+        function: (field_expression
+          value: (identifier) @_3 (#eq? @_3 "F")
+          field: (identifier) @_4 (#eq? @_4 "raiseError")
+        )
+        arguments: (arguments
+          (_) @_5
+        )
+      )
+    )
+  )
+  arguments: (arguments
+    (_) @_6
+  )
+) @_7
+]]),
+    handler = function(bufnr, matches)
+      local opt = matches[1][1]
+      local err = matches[5][1]
+      local success_handler = matches[6][1]
+      local finish = matches[7][1]
+
+      local success_text = utils.get_node_text(bufnr, success_handler)
+      if not success_text or not success_text:match('F%.pure') then
+        return {}
+      end
+
+      local opt_text = utils.get_node_text(bufnr, opt)
+      local err_text = utils.get_node_text(bufnr, err)
+      if not opt_text or not err_text then
+        return {}
+      end
+
+      local verify_target = finish
+      if not evidence.has_capability(bufnr, verify_target, 'MonadError') then
+        return {}
+      end
+
+      local start_row, start_col, _, _ = opt:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'F.fromOption(' .. opt_text .. ')(' .. err_text .. ')',
+          title = 'Cats: replace .fold(F.raiseError)(F.pure) with F.fromOption',
+        },
+      }
+    end,
+  },
+  -- either.fold(F.raiseError, F.pure) ~> F.fromEither(either)
+  from_either = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_either
+    field: (identifier) @_fold (#eq? @_fold "fold")
+  )
+  arguments: (arguments
+    (_) @_raise_handler
+    (_) @_pure_handler
+  )
+) @_finish
+]]),
+    handler = function(bufnr, matches)
+      local either = matches[1][1]
+      local raise_handler = matches[3][1]
+      local pure_handler = matches[4][1]
+      local finish = matches[5][1]
+
+      local raise_text = utils.get_node_text(bufnr, raise_handler)
+      local pure_text = utils.get_node_text(bufnr, pure_handler)
+      if not raise_text or not pure_text then
+        return {}
+      end
+
+      if not raise_text:match('F%.raiseError') then
+        return {}
+      end
+
+      if not pure_text:match('F%.pure') then
+        return {}
+      end
+
+      local either_text = utils.get_node_text(bufnr, either)
+      if not either_text then
+        return {}
+      end
+
+      local verify_target = finish
+      if not evidence.has_capability(bufnr, verify_target, 'MonadError') then
+        return {}
+      end
+
+      local start_row, start_col, _, _ = either:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = 'F.fromEither(' .. either_text .. ')',
+          title = 'Cats: replace .fold(F.raiseError, F.pure) with F.fromEither',
+        },
+      }
+    end,
+  },
 }

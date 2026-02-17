@@ -223,3 +223,61 @@ end)
       assert.are.equal(0, #ready)
     end)
   end)
+
+  describe('from_option', function()
+    it('matches opt.fold(F.raiseError(err))(F.pure) when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]: MonadError](opt: Option[Int], err: Throwable) =
+          opt.fold(F.raiseError(err))(F.pure)
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_option)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'F.fromOption(opt)(err)',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](opt: Option[Int], err: Throwable) =
+          opt.fold(F.raiseError(err))(F.pure)
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_option)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  describe('from_either', function()
+    it('matches either.fold(F.raiseError, F.pure) when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]: MonadError](either: Either[String, Int]) =
+          either.fold(F.raiseError, F.pure)
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_either)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = 'F.fromEither(either)',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](either: Either[String, Int]) =
+          either.fold(F.raiseError, F.pure)
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_either)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
