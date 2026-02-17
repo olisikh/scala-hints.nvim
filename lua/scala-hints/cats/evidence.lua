@@ -5,10 +5,11 @@ local M = {}
 local ranks = {
   Functor = 1,
   Apply = 2,
-  Applicative = 3,
-  Monad = 4,
-  MonadError = 5,
-  Sync = 6,
+  FlatMap = 3,      -- NEW
+  Applicative = 4,  -- was 3
+  Monad = 5,        -- was 4
+  MonadError = 6,   -- was 5
+  Sync = 7,         -- was 6
 }
 
 local known = {}
