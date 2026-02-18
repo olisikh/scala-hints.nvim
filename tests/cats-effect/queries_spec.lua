@@ -767,7 +767,7 @@ describe('Cats-Effect queries with type definition verification', function()
   ---------------------------------------------------------------------------
   describe('traverse', function()
     it('matches .map(f).sequence and suggests .traverse(f)', function()
-      local source = [[val x = coll.map(f).sequence]]
+      local source = [[val x = coll.map(x => IO(f(x))).sequence]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.traverse)
@@ -777,7 +777,7 @@ describe('Cats-Effect queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = 'coll.traverse(f)',
+        replacement = 'coll.traverse(x => IO(f(x)))',
         title = 'CE: replace .map(f).sequence with .traverse(f)',
       })
     end)
@@ -788,7 +788,7 @@ describe('Cats-Effect queries with type definition verification', function()
   ---------------------------------------------------------------------------
   describe('traverse_', function()
     it('matches .map(f).sequence_ and suggests .traverse_(f)', function()
-      local source = [[val x = coll.map(f).sequence_]]
+      local source = [[val x = coll.map(x => IO(f(x))).sequence_]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.traverse_)
@@ -798,7 +798,7 @@ describe('Cats-Effect queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = 'coll.traverse_(f)',
+        replacement = 'coll.traverse_(x => IO(f(x)))',
         title = 'CE: replace .map(f).sequence_ with .traverse_(f)',
       })
     end)

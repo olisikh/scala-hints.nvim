@@ -1752,23 +1752,33 @@ return {
   },
 
   -- coll.map(f).sequence ~> coll.traverse(f)
+  -- Note: We verify the IO type inside the lambda, not the whole expression,
+  -- because .sequence is from cats.syntax, not cats.effect.IO
   traverse = {
     query = parse_query([[
 (field_expression
   value: (call_expression
     function: (field_expression
-      value: (_) @_1
-      field: (identifier) @_2 (#eq? @_2 "map")
+      value: (_) @_coll
+      field: (identifier) @_map (#eq? @_map "map")
     )
-    arguments: (arguments (_) @_3)
-  ) @_4
-  field: (identifier) @_5 (#eq? @_5 "sequence")
-) @_6
+    arguments: (arguments
+      (lambda_expression
+        parameters: (identifier)
+        (call_expression
+          function: (identifier) @_io (#eq? @_io "IO")
+        ) @_io_call
+      ) @_func
+    )
+  )
+  field: (identifier) @_sequence (#eq? @_sequence "sequence")
+) @_full
 ]]),
     handler = function(bufnr, matches)
       local coll = matches[1][1]
-      local func = matches[3][1]
-      local full = matches[6][1]
+      local io_node = matches[3][1]
+      local func = matches[5][1]
+      local full = matches[7][1]
 
       local coll_text = utils.get_node_text(bufnr, coll)
       local func_text = utils.get_node_text(bufnr, func)
@@ -1787,7 +1797,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1806,18 +1816,26 @@ return {
 (field_expression
   value: (call_expression
     function: (field_expression
-      value: (_) @_1
-      field: (identifier) @_2 (#eq? @_2 "map")
+      value: (_) @_coll
+      field: (identifier) @_map (#eq? @_map "map")
     )
-    arguments: (arguments (_) @_3)
-  ) @_4
-  field: (identifier) @_5 (#eq? @_5 "sequence_")
-) @_6
+    arguments: (arguments
+      (lambda_expression
+        parameters: (identifier)
+        (call_expression
+          function: (identifier) @_io (#eq? @_io "IO")
+        ) @_io_call
+      ) @_func
+    )
+  )
+  field: (identifier) @_sequence (#eq? @_sequence "sequence_")
+) @_full
 ]]),
     handler = function(bufnr, matches)
       local coll = matches[1][1]
-      local func = matches[3][1]
-      local full = matches[6][1]
+      local io_node = matches[3][1]
+      local func = matches[5][1]
+      local full = matches[7][1]
 
       local coll_text = utils.get_node_text(bufnr, coll)
       local func_text = utils.get_node_text(bufnr, func)
@@ -1836,7 +1854,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
