@@ -64,6 +64,14 @@ require('scala-hints').setup({
 2. Diagnostics appear automatically (default severity: `HINT`).
 3. Apply fixes via `:lua vim.lsp.buf.code_action()` or your preferred keymap.
 
+### Commands
+
+| Command | Description |
+| --- | --- |
+| `:ScalaHintsApplyBuffer` | Apply all scala-hints fixes in the current buffer |
+
+The `:ScalaHintsApplyBuffer` command applies all available fixes at once. If multiple fixes overlap (e.g., a `println` fix inside a `traverse_` fix), overlapping fixes are skipped to prevent broken code. Run the command again to apply remaining fixes after the buffer is re-analyzed.
+
 ## Pattern Catalog
 
 ### ZIO (35 patterns)
