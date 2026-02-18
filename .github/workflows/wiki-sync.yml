@@ -12,10 +12,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Sync docs to wiki
-        uses: joeizzard/action-wiki-sync@v1
+        uses: gouef/github-wiki-sync-repository-action@v0.6.0
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          source-folder: docs
+          dir: docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
