@@ -1,0 +1,30 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark wiki as safe
+        run: git config --global --add safe.directory /wiki
+
+      - name: Sync docs to wiki
+        uses: joeizzard/action-wiki-sync@v1
+        with:
+          username: olisikh
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+          wiki_folder: docs
+          commit_username: 'Oleksii Lisikh'
+          commit_email: 'alisiikh@gmail.com'
+          commit_message: 'action: wiki sync'
