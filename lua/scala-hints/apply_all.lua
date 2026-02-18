@@ -30,7 +30,7 @@ end
 --- @param opts table|nil Optional settings
 --- @param opts.notify boolean Whether to notify user on completion (default: true)
 --- @return table summary { applied: number, remaining: number }
-function M.apply_all(bufnr, opts)
+function M.run(bufnr, opts)
   bufnr = bufnr or 0
   opts = opts or {}
   local should_notify = opts.notify ~= false

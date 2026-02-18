@@ -1,4 +1,3 @@
-local constants = require('scala-hints.constants')
 local client = require('scala-hints.client')
 local semantic = require('scala-hints.semantic')
 local diagnostics = require('scala-hints.diagnostics')
@@ -35,7 +34,7 @@ M.setup = function(opts)
       end
 
       -- Only act on Scala buffers
-      if vim.bo[bufnr].filetype ~= "scala" then
+      if vim.bo[bufnr].filetype ~= 'scala' then
         return
       end
 
@@ -52,7 +51,7 @@ M.setup = function(opts)
   })
 
   vim.api.nvim_create_user_command('ScalaHintsApplyBuffer', function()
-    apply_all.apply_all(0)
+    apply_all.run(0)
   end, {
     desc = 'Apply all scala-hints fixes in current buffer',
   })
