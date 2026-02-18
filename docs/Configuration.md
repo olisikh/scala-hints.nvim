@@ -27,6 +27,40 @@ require('scala-hints').setup({
 
 ---
 
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `:ScalaHintsApplyBuffer` | Apply all scala-hints fixes in the current buffer |
+
+### `:ScalaHintsApplyBuffer`
+
+Applies all available scala-hints fixes in the current buffer at once.
+
+**Behavior:**
+- Collects all scala-hints diagnostics
+- Applies non-overlapping fixes in one pass
+- Skips overlapping fixes to prevent broken code
+- Notifies you of applied and skipped counts
+
+**Overlapping Fixes:**
+
+When multiple patterns match overlapping code (e.g., a `println` fix inside a `traverse_` fix), only one fix is applied to prevent broken code. Run the command again to apply remaining fixes after the buffer is re-analyzed.
+
+**Example:**
+```scala
+// Before
+List(1, 2, 3).map(x => IO(println(x))).sequence_
+
+// After first :ScalaHintsApplyBuffer
+List(1, 2, 3).map(x => IO.println(x)).sequence_  // println fixed, traverse_ skipped
+
+// After second :ScalaHintsApplyBuffer
+List(1, 2, 3).traverse_(x => IO.println(x))  // traverse_ now fixed
+```
+
+---
+
 ## Configuration Sections
 
 ### logging
