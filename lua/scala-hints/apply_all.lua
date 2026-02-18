@@ -3,9 +3,9 @@ local client_mod = require('scala-hints.client')
 
 local M = {}
 
-local MAX_ITERATIONS = 50
-
---- Apply all scala-hints diagnostics in the buffer iteratively.
+--- Apply all scala-hints diagnostics in the buffer.
+--- Collects all code actions first, then applies them in reverse order
+--- (bottom to top) to avoid position shifts.
 --- @param bufnr number|nil Buffer number (defaults to current buffer)
 --- @param opts table|nil Optional settings
 --- @param opts.notify boolean Whether to notify user on completion (default: true)
@@ -19,114 +19,127 @@ function M.apply_all(bufnr, opts)
     bufnr = vim.api.nvim_get_current_buf()
   end
 
-  local applied_total = 0
-  local iteration = 0
-  local remaining = 0
-
-  while iteration < MAX_ITERATIONS do
-    iteration = iteration + 1
-
-    local all_diagnostics = vim.diagnostic.get(bufnr)
-
-    local scala_hints_diagnostics = {}
-    for _, diag in ipairs(all_diagnostics) do
-      if diag.source == constants.plugin_name then
-        table.insert(scala_hints_diagnostics, diag)
-      end
-    end
-
-    if #scala_hints_diagnostics == 0 then
-      remaining = 0
-      break
-    end
-
-    table.sort(scala_hints_diagnostics, function(a, b)
-      if a.lnum ~= b.lnum then
-        return a.lnum < b.lnum
-      end
-      return (a.col or 0) < (b.col or 0)
-    end)
-
-    local diag = scala_hints_diagnostics[1]
-    local applied = M._apply_diagnostic_fix(bufnr, diag)
-
-    if applied then
-      applied_total = applied_total + 1
-    else
-      remaining = #scala_hints_diagnostics
-      break
-    end
-
-    remaining = #scala_hints_diagnostics - 1
-  end
-
-  if should_notify then
-    if applied_total > 0 then
-      vim.notify(
-        string.format('scala-hints: Applied %d fix%s, %d remaining', applied_total, applied_total == 1 and '' or 'es', remaining),
-        vim.log.levels.INFO
-      )
-    else
-      vim.notify('scala-hints: No fixes to apply', vim.log.levels.INFO)
-    end
-  end
-
-  return {
-    applied = applied_total,
-    remaining = remaining,
-  }
-end
-
---- Apply a single diagnostic's fix via LSP code action.
---- @param bufnr number Buffer number
---- @param diag table Diagnostic from vim.diagnostic.get
---- @return boolean success Whether the fix was applied
-function M._apply_diagnostic_fix(bufnr, diag)
   local client_id = client_mod.get_client_id()
   if not client_id then
-    return false
+    if should_notify then
+      vim.notify('scala-hints: Client not running', vim.log.levels.WARN)
+    end
+    return { applied = 0, remaining = 0 }
   end
 
-  local client = vim.lsp.get_client_by_id(client_id)
-  if not client then
-    return false
+  -- Get all scala-hints diagnostics
+  local all_diagnostics = vim.diagnostic.get(bufnr)
+  local scala_hints_diagnostics = {}
+  for _, diag in ipairs(all_diagnostics) do
+    if diag.source == constants.plugin_name then
+      table.insert(scala_hints_diagnostics, diag)
+    end
   end
 
+  if #scala_hints_diagnostics == 0 then
+    if should_notify then
+      vim.notify('scala-hints: No fixes to apply', vim.log.levels.INFO)
+    end
+    return { applied = 0, remaining = 0 }
+  end
+
+  -- Sort by line (ascending) for consistent ordering
+  table.sort(scala_hints_diagnostics, function(a, b)
+    if a.lnum ~= b.lnum then
+      return a.lnum < b.lnum
+    end
+    return (a.col or 0) < (b.col or 0)
+  end)
+
+  -- Collect all code actions
+  local edits = {}
   local uri = vim.uri_from_bufnr(bufnr)
-  local params = {
-    textDocument = { uri = uri },
-    range = {
-      start = { line = diag.lnum, character = diag.col },
-      ['end'] = { line = diag.end_lnum or diag.lnum, character = diag.end_col or diag.col },
-    },
-    context = {
-      diagnostics = { diag },
-      only = { 'quickfix' },
-    },
-  }
 
-  local applied = false
-  local results = vim.lsp.buf_request_sync(bufnr, 'textDocument/codeAction', params, 5000)
+  for _, diag in ipairs(scala_hints_diagnostics) do
+    local params = {
+      textDocument = { uri = uri },
+      range = {
+        start = { line = diag.lnum, character = diag.col },
+        ['end'] = { line = diag.end_lnum or diag.lnum, character = diag.end_col or diag.col },
+      },
+      context = {
+        diagnostics = { diag },
+        only = { 'quickfix' },
+      },
+    }
 
-  if results then
-    for client_id_str, response in pairs(results) do
-      local resp_client_id = tonumber(client_id_str)
-      if resp_client_id == client_id and response.result and #response.result > 0 then
-        local action = response.result[1]
-        if action.edit then
-          vim.lsp.util.apply_workspace_edit(action.edit, 'utf-16')
-          applied = true
-          break
-        elseif action.command then
-          vim.lsp.buf.execute_command(action.command)
-          applied = true
+    local results = vim.lsp.buf_request_sync(bufnr, 'textDocument/codeAction', params, 5000)
+
+    if results then
+      for client_id_str, response in pairs(results) do
+        local resp_client_id = tonumber(client_id_str)
+        if resp_client_id == client_id and response.result and #response.result > 0 then
+          local action = response.result[1]
+          if action.edit and action.edit.changes then
+            -- Extract the text edit for this file
+            local file_edits = action.edit.changes[uri]
+            if file_edits then
+              for _, text_edit in ipairs(file_edits) do
+                table.insert(edits, {
+                  range = text_edit.range,
+                  newText = text_edit.newText,
+                  lnum = diag.lnum,
+                  col = diag.col,
+                })
+              end
+            end
+          end
           break
         end
       end
     end
   end
 
-  return applied
+  if #edits == 0 then
+    if should_notify then
+      vim.notify('scala-hints: No fixes to apply', vim.log.levels.INFO)
+    end
+    return { applied = 0, remaining = #scala_hints_diagnostics }
+  end
+
+  -- Sort edits by position (descending - bottom to top)
+  -- This ensures earlier edits don't shift positions of later edits
+  table.sort(edits, function(a, b)
+    if a.range.start.line ~= b.range.start.line then
+      return a.range.start.line > b.range.start.line
+    end
+    return a.range.start.character > b.range.start.character
+  end)
+
+  -- Apply all edits
+  local applied = 0
+  for _, edit in ipairs(edits) do
+    local start_row = edit.range.start.line
+    local start_col = edit.range.start.character
+    local end_row = edit.range['end'].line
+    local end_col = edit.range['end'].character
+    local text = vim.split(edit.newText, '\n', { plain = true })
+
+    -- Get current line for column bounds check
+    local lines = vim.api.nvim_buf_get_lines(bufnr, end_row, end_row + 1, false)
+    local max_col = lines[1] and #lines[1] or 0
+    end_col = math.min(end_col, max_col)
+
+    vim.api.nvim_buf_set_text(bufnr, start_row, start_col, end_row, end_col, text)
+    applied = applied + 1
+  end
+
+  -- Clear scala-hints diagnostics after applying fixes
+  vim.diagnostic.reset(vim.api.nvim_create_namespace('scala-hints'), bufnr)
+
+  if should_notify then
+    vim.notify(
+      string.format('scala-hints: Applied %d fix%s', applied, applied == 1 and '' or 'es'),
+      vim.log.levels.INFO
+    )
+  end
+
+  return { applied = applied, remaining = 0 }
 end
 
 return M
