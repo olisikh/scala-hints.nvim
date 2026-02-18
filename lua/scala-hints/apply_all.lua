@@ -3,9 +3,29 @@ local client_mod = require('scala-hints.client')
 
 local M = {}
 
+--- Check if two ranges overlap
+local function ranges_overlap(r1, r2)
+  -- r1 is entirely before r2
+  if r1.end_line < r2.start_line then
+    return false
+  end
+  -- r1 is entirely after r2
+  if r1.start_line > r2.end_line then
+    return false
+  end
+  -- Same line - check columns
+  if r1.start_line == r2.end_line and r1.end_col < r2.start_col then
+    return false
+  end
+  if r1.end_line == r2.start_line and r1.start_col > r2.end_col then
+    return false
+  end
+  return true
+end
+
 --- Apply all scala-hints diagnostics in the buffer.
---- Collects all code actions first, then applies them in reverse order
---- (bottom to top) to avoid position shifts.
+--- Collects all code actions first, then applies non-overlapping edits
+--- in reverse order (bottom to top).
 --- @param bufnr number|nil Buffer number (defaults to current buffer)
 --- @param opts table|nil Optional settings
 --- @param opts.notify boolean Whether to notify user on completion (default: true)
@@ -27,7 +47,6 @@ function M.apply_all(bufnr, opts)
     return { applied = 0, remaining = 0 }
   end
 
-  -- Get all scala-hints diagnostics
   local all_diagnostics = vim.diagnostic.get(bufnr)
   local scala_hints_diagnostics = {}
   for _, diag in ipairs(all_diagnostics) do
@@ -43,7 +62,6 @@ function M.apply_all(bufnr, opts)
     return { applied = 0, remaining = 0 }
   end
 
-  -- Sort by line (ascending) for consistent ordering
   table.sort(scala_hints_diagnostics, function(a, b)
     if a.lnum ~= b.lnum then
       return a.lnum < b.lnum
@@ -51,7 +69,6 @@ function M.apply_all(bufnr, opts)
     return (a.col or 0) < (b.col or 0)
   end)
 
-  -- Collect all code actions
   local edits = {}
   local uri = vim.uri_from_bufnr(bufnr)
 
@@ -76,15 +93,16 @@ function M.apply_all(bufnr, opts)
         if resp_client_id == client_id and response.result and #response.result > 0 then
           local action = response.result[1]
           if action.edit and action.edit.changes then
-            -- Extract the text edit for this file
             local file_edits = action.edit.changes[uri]
             if file_edits then
               for _, text_edit in ipairs(file_edits) do
                 table.insert(edits, {
                   range = text_edit.range,
                   newText = text_edit.newText,
-                  lnum = diag.lnum,
-                  col = diag.col,
+                  start_line = text_edit.range.start.line,
+                  start_col = text_edit.range.start.character,
+                  end_line = text_edit.range['end'].line,
+                  end_col = text_edit.range['end'].character,
                 })
               end
             end
@@ -102,44 +120,65 @@ function M.apply_all(bufnr, opts)
     return { applied = 0, remaining = #scala_hints_diagnostics }
   end
 
-  -- Sort edits by position (descending - bottom to top)
-  -- This ensures earlier edits don't shift positions of later edits
   table.sort(edits, function(a, b)
-    if a.range.start.line ~= b.range.start.line then
-      return a.range.start.line > b.range.start.line
+    if a.start_line ~= b.start_line then
+      return a.start_line > b.start_line
     end
-    return a.range.start.character > b.range.start.character
+    return a.start_col > b.start_col
   end)
 
-  -- Apply all edits
-  local applied = 0
+  -- Track modified ranges and skip overlapping edits
+  local applied_edits = {}
+  local skipped = 0
+
   for _, edit in ipairs(edits) do
-    local start_row = edit.range.start.line
-    local start_col = edit.range.start.character
-    local end_row = edit.range['end'].line
-    local end_col = edit.range['end'].character
-    local text = vim.split(edit.newText, '\n', { plain = true })
+    local overlaps = false
+    for _, applied in ipairs(applied_edits) do
+      if ranges_overlap(
+        { start_line = edit.start_line, start_col = edit.start_col, end_line = edit.end_line, end_col = edit.end_col },
+        { start_line = applied.start_line, start_col = applied.start_col, end_line = applied.end_line, end_col = applied.end_col }
+      ) then
+        overlaps = true
+        break
+      end
+    end
 
-    -- Get current line for column bounds check
-    local lines = vim.api.nvim_buf_get_lines(bufnr, end_row, end_row + 1, false)
-    local max_col = lines[1] and #lines[1] or 0
-    end_col = math.min(end_col, max_col)
+    if not overlaps then
+      local start_row = edit.start_line
+      local start_col = edit.start_col
+      local end_row = edit.end_line
+      local end_col = edit.end_col
+      local text = vim.split(edit.newText, '\n', { plain = true })
 
-    vim.api.nvim_buf_set_text(bufnr, start_row, start_col, end_row, end_col, text)
-    applied = applied + 1
+      local lines = vim.api.nvim_buf_get_lines(bufnr, end_row, end_row + 1, false)
+      local max_col = lines[1] and #lines[1] or 0
+      end_col = math.min(end_col, max_col)
+
+      vim.api.nvim_buf_set_text(bufnr, start_row, start_col, end_row, end_col, text)
+      table.insert(applied_edits, edit)
+    else
+      skipped = skipped + 1
+    end
   end
 
-  -- Clear scala-hints diagnostics after applying fixes
   vim.diagnostic.reset(vim.api.nvim_create_namespace('scala-hints'), bufnr)
 
+  local applied = #applied_edits
   if should_notify then
-    vim.notify(
-      string.format('scala-hints: Applied %d fix%s', applied, applied == 1 and '' or 'es'),
-      vim.log.levels.INFO
-    )
+    if skipped > 0 then
+      vim.notify(
+        string.format('scala-hints: Applied %d fix%s, %d skipped (overlapping)', applied, applied == 1 and '' or 'es', skipped),
+        vim.log.levels.INFO
+      )
+    else
+      vim.notify(
+        string.format('scala-hints: Applied %d fix%s', applied, applied == 1 and '' or 'es'),
+        vim.log.levels.INFO
+      )
+    end
   end
 
-  return { applied = applied, remaining = 0 }
+  return { applied = applied, remaining = skipped }
 end
 
 return M
