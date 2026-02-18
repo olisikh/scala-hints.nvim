@@ -218,20 +218,20 @@ return {
   zip_right_unit = {
     query = parse_query([[
 (infix_expression
-  left: (_) @_1
-  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  left: (_) @_left
+  operator: (operator_identifier) @_op (#eq? @_op "*>")
   right: (field_expression
-    value: (identifier) @_3 (#eq? @_3 "ZIO")
-    field: (identifier) @_4 (#eq? @_4 "unit")
-  ) @_5
+    value: (identifier) @_zio (#eq? @_zio "ZIO")
+    field: (identifier) @_unit (#eq? @_unit "unit")
+  ) @_finish
 )
 ]]),
     handler = function(bufnr, matches)
-      local verify_target = matches[1][1]
-      local start = matches[1][1]
+      local left = matches[1][1]
+      local op = matches[2][1]
       local finish = matches[5][1]
 
-      local _, _, start_row, start_col = start:range()
+      local _, _, start_row, start_col = op:range()
       local dstart_row, dstart_col, end_row, end_col = finish:range()
 
       local replaced = utils.get_node_text(bufnr, finish)
@@ -247,7 +247,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, left, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -307,25 +307,25 @@ return {
   zip_right_value = {
     query = parse_query([[
 (infix_expression
-  left: (_) @_1
-  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  left: (_) @_left
+  operator: (operator_identifier) @_op (#eq? @_op "*>")
   right: (call_expression
     function: (field_expression
-      value: (identifier) @_3 (#eq? @_3 "ZIO")
-      field: (identifier) @_4 (#eq? @_4 "succeed")
-    ) @_5
-    arguments: (arguments (_) @_6 (#not-eq? @_6 "()"))
-  ) @_7
+      value: (identifier) @_zio (#eq? @_zio "ZIO")
+      field: (identifier) @_succeed (#eq? @_succeed "succeed")
+    ) @_target
+    arguments: (arguments (_) @_value (#not-eq? @_value "()"))
+  ) @_finish
 )
 ]]),
     handler = function(bufnr, matches)
-      local verify_target = matches[1][1]
-      local start = matches[1][1]
+      local left = matches[1][1]
+      local op = matches[2][1]
       local target = matches[5][1]
       local value = matches[6][1]
       local finish = matches[7][1]
 
-      local _, _, start_row, start_col = start:range()
+      local _, _, start_row, start_col = op:range()
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
@@ -342,7 +342,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, left, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
