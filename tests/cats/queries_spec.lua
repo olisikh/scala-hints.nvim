@@ -236,7 +236,7 @@ describe('Cats tagless queries', function()
       assert.are.equal(0, #pending)
       assert.are.equal(1, #ready)
       H.assert_result(ready[1], {
-        replacement = 'F.fromOption(opt)(err)',
+        replacement = 'F.fromOption(opt, err)',
       })
     end)
 
