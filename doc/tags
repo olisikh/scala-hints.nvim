@@ -1,0 +1,10 @@
+:ScalaHintsApplyBuffer	scala-hints.txt	/*:ScalaHintsApplyBuffer*
+scala-hints	scala-hints.txt	/*scala-hints*
+scala-hints-commands	scala-hints.txt	/*scala-hints-commands*
+scala-hints-config	scala-hints.txt	/*scala-hints-config*
+scala-hints-links	scala-hints.txt	/*scala-hints-links*
+scala-hints-patterns	scala-hints.txt	/*scala-hints-patterns*
+scala-hints-requirements	scala-hints.txt	/*scala-hints-requirements*
+scala-hints-setup	scala-hints.txt	/*scala-hints-setup*
+scala-hints-troubleshooting	scala-hints.txt	/*scala-hints-troubleshooting*
+scala-hints.txt	scala-hints.txt	/*scala-hints.txt*
