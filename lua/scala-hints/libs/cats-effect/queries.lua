@@ -2576,7 +2576,7 @@ return {
     handler = function(bufnr, matches)
       local io_node = matches[1][1]
       local args_node = matches[3][1]
-      local finish = matches[4][1]
+      local finish = matches[5][1]
 
       local args_text = utils.get_node_text(bufnr, args_node)
       local start_row, start_col, _, _ = io_node:range()
@@ -2625,7 +2625,7 @@ return {
     handler = function(bufnr, matches)
       local io_node = matches[1][1]
       local args_node = matches[4][1]
-      local finish = matches[5][1]
+      local finish = matches[6][1]
 
       local args_text = utils.get_node_text(bufnr, args_node)
       local start_row, start_col, _, _ = io_node:range()
@@ -2671,7 +2671,7 @@ return {
     handler = function(bufnr, matches)
       local io_node = matches[1][1]
       local args_node = matches[3][1]
-      local finish = matches[4][1]
+      local finish = matches[5][1]
 
       local args_text = utils.get_node_text(bufnr, args_node)
       local start_row, start_col, _, _ = io_node:range()
@@ -2721,7 +2721,7 @@ return {
     handler = function(bufnr, matches)
       local io_node = matches[1][1]
       local args_node = matches[4][1]
-      local finish = matches[5][1]
+      local finish = matches[6][1]
 
       local args_text = utils.get_node_text(bufnr, args_node)
       local start_row, start_col, _, _ = io_node:range()
