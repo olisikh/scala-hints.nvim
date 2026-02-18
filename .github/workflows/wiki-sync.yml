@@ -15,6 +15,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Sync docs to wiki
         uses: gouef/github-wiki-sync-repository-action@v0.6.0
         with:
