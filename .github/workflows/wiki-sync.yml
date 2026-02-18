@@ -15,10 +15,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Sync docs to wiki
-        uses: gouef/github-wiki-sync-repository-action@v0.6.0
+        uses: joeizzard/action-wiki-sync@master
         with:
-          dir: docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          username: olisikh
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+          wiki_folder: docs
+          commit_username: 'Oleksii Lisikh'
+          commit_email: 'alisiikh@gmail.com'
+          commit_message: 'action: wiki sync'
