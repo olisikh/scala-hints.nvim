@@ -4,6 +4,7 @@ local semantic = require('scala-hints.semantic')
 local diagnostics = require('scala-hints.diagnostics')
 local actions = require('scala-hints.actions')
 local logger = require('scala-hints.logger')
+local apply_all = require('scala-hints.apply_all')
 
 local M = {}
 
@@ -48,6 +49,12 @@ M.setup = function(opts)
       logger.info('Metals attached to buffer ' .. bufnr .. ', starting scala-hints client')
       client.start(bufnr)
     end,
+  })
+
+  vim.api.nvim_create_user_command('ScalaHintsApplyBuffer', function()
+    apply_all.apply_all(0)
+  end, {
+    desc = 'Apply all scala-hints fixes in current buffer',
   })
 
   logger.info('Plugin initialized')
