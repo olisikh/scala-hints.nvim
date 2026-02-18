@@ -281,3 +281,73 @@ end)
       assert.are.equal(0, #ready)
     end)
   end)
+
+  describe('redeem', function()
+    it('matches .attempt.map with Right/Left cases when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int])(implicit F: MonadError[F, Throwable]) =
+          fa.attempt.map {
+            case Right(a) => f(a)
+            case Left(e) => g(e)
+          }
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.redeem(e => g(e), a => f(a))',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int]) =
+          fa.attempt.map {
+            case Right(a) => f(a)
+            case Left(e) => g(e)
+          }
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+
+  describe('redeem_with', function()
+    it('matches .attempt.flatMap with Right/Left cases when MonadError evidence exists', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int], fb: F[String], fc: Throwable => F[String])(implicit F: MonadError[F, Throwable]) =
+          fa.attempt.flatMap {
+            case Right(a) => fb
+            case Left(e) => fc(e)
+          }
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem_with)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.redeemWith(e => fc(e), a => fb)',
+      })
+    end)
+
+    it('does not match without MonadError evidence', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int], fb: F[String], fc: Throwable => F[String]) =
+          fa.attempt.flatMap {
+            case Right(a) => fb
+            case Left(e) => fc(e)
+          }
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem_with)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)

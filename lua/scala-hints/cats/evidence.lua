@@ -59,9 +59,23 @@ end
 
 local function extract_header(text)
   local header = text
-  local eq_index = header:find('=')
-  if eq_index then
-    header = header:sub(1, eq_index - 1)
+  -- Find the first '=' at the top level (not inside parentheses, not part of '=>')
+  local depth = 0
+  local i = 1
+  while i <= #header do
+    local char = header:sub(i, i)
+    if char == '(' then
+      depth = depth + 1
+    elseif char == ')' then
+      depth = depth - 1
+    elseif char == '=' and depth == 0 then
+      -- Check it's not part of '=>'
+      if i == 1 or header:sub(i - 1, i - 1) ~= '>' then
+        header = header:sub(1, i - 1)
+        break
+      end
+    end
+    i = i + 1
   end
   local brace_index = header:find('{')
   if brace_index then

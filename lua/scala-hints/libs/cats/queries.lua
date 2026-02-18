@@ -714,4 +714,104 @@ return {
       }
     end,
   },
+  -- fa.attempt.map { case Right(a) => f(a); case Left(e) => g(e) } ~> fa.redeem(g, a => f(a))
+  redeem = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "attempt")
+    ) @_3
+    field: (identifier) @_4 (#eq? @_4 "map")
+  )
+  arguments: (_) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local attempt_id = matches[2][1]
+      local match_node = matches[5][1]
+
+      if not match_node then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, attempt_id, 'MonadError') then
+        return {}
+      end
+
+      local case_map = extract_case_map(bufnr, match_node)
+      local right = case_map.Right
+      local left = case_map.Left
+      if not (right and left) then
+        return {}
+      end
+
+      local left_fn = left.param .. ' => ' .. left.body
+      local right_fn = right.param .. ' => ' .. right.body
+
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      dstart_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = match_node:range()
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = '.redeem(' .. left_fn .. ', ' .. right_fn .. ')',
+          title = 'Cats: replace .attempt.map with .redeem',
+        },
+      }
+    end,
+  },
+  -- fa.attempt.flatMap { case Right(a) => fb; case Left(e) => fc(e) } ~> fa.redeemWith(fc, a => fb)
+  redeem_with = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (field_expression
+      value: (_) @_1
+      field: (identifier) @_2 (#eq? @_2 "attempt")
+    ) @_3
+    field: (identifier) @_4 (#eq? @_4 "flatMap")
+  )
+  arguments: (_) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local attempt_id = matches[2][1]
+      local match_node = matches[5][1]
+
+      if not match_node then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, attempt_id, 'MonadError') then
+        return {}
+      end
+
+      local case_map = extract_case_map(bufnr, match_node)
+      local right = case_map.Right
+      local left = case_map.Left
+      if not (right and left) then
+        return {}
+      end
+
+      local left_fn = left.param .. ' => ' .. left.body
+      local right_fn = right.param .. ' => ' .. right.body
+
+      local dstart_row, dstart_col, _, _ = attempt_id:range()
+      dstart_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = match_node:range()
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+          replacement = '.redeemWith(' .. left_fn .. ', ' .. right_fn .. ')',
+          title = 'Cats: replace .attempt.flatMap with .redeemWith',
+        },
+      }
+    end,
+  },
 }
