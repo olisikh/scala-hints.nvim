@@ -14,14 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v4
 
       - name: Sync docs to wiki
-        uses: joeizzard/action-wiki-sync@v1
-        with:
-          username: olisikh
-          access_token: ${{ secrets.GITHUB_TOKEN }}
-          wiki_folder: docs
-          commit_username: 'Oleksii Lisikh'
-          commit_email: 'alisiikh@gmail.com'
-          commit_message: 'action: wiki sync'
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+
+          cd wiki
+
+          git config --global --add safe.directory "$(pwd)"
+          git config user.name "Oleksii Lisikh"
+          git config user.email "alisiikh@gmail.com"
+
+          rm -rf *
+          cp -r ../docs/* .
+
+          git add .
+          git commit -m "action: wiki sync" || echo "No changes to commit"
+          git push
