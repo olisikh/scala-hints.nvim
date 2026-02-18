@@ -531,7 +531,7 @@ describe('ZIO queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = '.delay(5.seconds)',
+        replacement = 'effect.delay(5.seconds)',
         title = 'ZIO: replace ZIO.sleep(5.seconds) *> effect with effect.delay(5.seconds)',
       })
     end)
@@ -546,7 +546,7 @@ describe('ZIO queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = '.delay(Duration.fromMillis(100))',
+        replacement = 'otherZIO.delay(Duration.fromMillis(100))',
       })
     end)
 

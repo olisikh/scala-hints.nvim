@@ -333,7 +333,7 @@ def program[F[_]: MonadError[*[_], Error]](valid: Boolean): F[Unit] =
 
 **Detection:** `opt.fold(F.raiseError(err))(F.pure)`
 
-**Replacement:** `F.fromOption(opt)(err)`
+**Replacement:** `F.fromOption(opt, err)`
 
 **Required Evidence:** MonadError
 
@@ -344,7 +344,7 @@ def program[F[_]: MonadError[*[_], Error]]: F[User] =
 
 // After
 def program[F[_]: MonadError[*[_], Error]]: F[User] =
-  F.fromOption(findUser)(UserNotFound)
+  F.fromOption(findUser, UserNotFound)
 ```
 
 ---
@@ -509,7 +509,7 @@ object ZIOUserService {
 | `handle_error` | `.attempt.flatMap { Right/Left ... }` | `.handleError(...)` | MonadError |
 | `raise_when` | `if (cond) F.raiseError(err) else F.unit` | `F.raiseWhen(cond)(err)` | MonadError |
 | `raise_unless` | `if (cond) F.unit else F.raiseError(err)` | `F.raiseUnless(cond)(err)` | MonadError |
-| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt)(err)` | MonadError |
+| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt, err)` | MonadError |
 | `from_either` | `either.fold(F.raiseError, F.pure)` | `F.fromEither(either)` | MonadError |
 | `redeem` | `.attempt.map { Right/Left ... }` | `.redeem(...)` | MonadError |
 | `redeem_with` | `.attempt.flatMap { Right/Left ... }` | `.redeemWith(...)` | MonadError |

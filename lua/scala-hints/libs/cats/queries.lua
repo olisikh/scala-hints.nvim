@@ -651,7 +651,7 @@ return {
         {
           diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
           action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
-          replacement = 'F.fromOption(' .. opt_text .. ')(' .. err_text .. ')',
+          replacement = 'F.fromOption(' .. opt_text .. ', ' .. err_text .. ')',
           title = 'Cats: replace .fold(F.raiseError)(F.pure) with F.fromOption',
         },
       }

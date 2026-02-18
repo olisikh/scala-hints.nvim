@@ -218,20 +218,20 @@ return {
   zip_right_unit = {
     query = parse_query([[
 (infix_expression
-  left: (_) @_1
-  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  left: (_) @_left
+  operator: (operator_identifier) @_op (#eq? @_op "*>")
   right: (field_expression
-    value: (identifier) @_3 (#eq? @_3 "ZIO")
-    field: (identifier) @_4 (#eq? @_4 "unit")
-  ) @_5
+    value: (identifier) @_zio (#eq? @_zio "ZIO")
+    field: (identifier) @_unit (#eq? @_unit "unit")
+  ) @_finish
 )
 ]]),
     handler = function(bufnr, matches)
-      local verify_target = matches[1][1]
-      local start = matches[1][1]
+      local left = matches[1][1]
       local finish = matches[5][1]
 
-      local _, _, start_row, start_col = start:range()
+      -- Start from end of left side to include any whitespace before *>
+      local _, _, start_row, start_col = left:range()
       local dstart_row, dstart_col, end_row, end_col = finish:range()
 
       local replaced = utils.get_node_text(bufnr, finish)
@@ -247,7 +247,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, left, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -307,25 +307,25 @@ return {
   zip_right_value = {
     query = parse_query([[
 (infix_expression
-  left: (_) @_1
-  operator: (operator_identifier) @_2 (#eq? @_2 "*>")
+  left: (_) @_left
+  operator: (operator_identifier) @_op (#eq? @_op "*>")
   right: (call_expression
     function: (field_expression
-      value: (identifier) @_3 (#eq? @_3 "ZIO")
-      field: (identifier) @_4 (#eq? @_4 "succeed")
-    ) @_5
-    arguments: (arguments (_) @_6 (#not-eq? @_6 "()"))
-  ) @_7
+      value: (identifier) @_zio (#eq? @_zio "ZIO")
+      field: (identifier) @_succeed (#eq? @_succeed "succeed")
+    ) @_target
+    arguments: (arguments (_) @_value (#not-eq? @_value "()"))
+  ) @_finish
 )
 ]]),
     handler = function(bufnr, matches)
-      local verify_target = matches[1][1]
-      local start = matches[1][1]
+      local left = matches[1][1]
       local target = matches[5][1]
       local value = matches[6][1]
       local finish = matches[7][1]
 
-      local _, _, start_row, start_col = start:range()
+      -- Start from end of left side to include any whitespace before *>
+      local _, _, start_row, start_col = left:range()
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
@@ -342,7 +342,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_zio_type, function(is_zio)
+            semantic.type_definition_predicate(bufnr, left, is_zio_type, function(is_zio)
               if is_zio then
                 done(item)
               else
@@ -357,7 +357,7 @@ return {
 
   -- x.zipRight(v) ~> x *> v
   zip_right_operator = {
-    diagnostic_severity = 'OFF',
+    diagnostic_severity = 'HINT',
     query = parse_query([[
 (call_expression
   function: (field_expression
@@ -376,6 +376,9 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      -- Adjust start_col to include the '.' before 'zipRight'
+      local action_start_col = dstart_col - 1
+
       return {
         ready = {},
         pending = {
@@ -389,7 +392,7 @@ return {
               local value_text = utils.get_node_text(bufnr, value)
               done({
                 diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                action = { start_row = dstart_row, start_col = action_start_col, end_row = end_row, end_col = end_col },
                 replacement = ' *> ' .. value_text,
                 title = 'ZIO: replace .zipRight(' .. value_text .. ') with *> ' .. value_text,
               })
@@ -402,7 +405,7 @@ return {
 
   -- x.tap(_ => v) ~> x <* v / x.zipLeft(v)
   zip_left_value = {
-    diagnostic_severity = 'OFF',
+    diagnostic_severity = 'HINT',
     query = parse_query([[
 (call_expression
   function: (field_expression
@@ -803,6 +806,18 @@ return {
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
+
+      -- Skip if the body is a block that returns the parameter (tap_error pattern)
+      if value:type() == 'block' or value:type() == 'indented_block' then
+        local child_count = value:named_child_count()
+        if child_count >= 1 then
+          local last_child = value:named_child(child_count - 1)
+          if last_child:type() == 'identifier' then
+            -- This is likely a tap_error pattern, skip
+            return { ready = {}, pending = {} }
+          end
+        end
+      end
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -1318,11 +1333,12 @@ return {
       local _, _, end_row, end_col = finish:range()
 
       local duration_text = utils.get_node_text(bufnr, duration)
+      local effect_text = utils.get_node_text(bufnr, effect)
 
       local item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
         action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-        replacement = '.delay(' .. duration_text .. ')',
+        replacement = effect_text .. '.delay(' .. duration_text .. ')',
         title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
       }
 

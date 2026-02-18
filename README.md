@@ -123,7 +123,7 @@ Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (c
 | `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError` | MonadError |
 | `raise_when` | `if (cond) F.raiseError(err) else F.unit` | `F.raiseWhen(cond)(err)` | MonadError |
 | `raise_unless` | `if (!cond) F.raiseError(err) else F.unit` | `F.raiseUnless(cond)(err)` | MonadError |
-| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt)(err)` | MonadError |
+| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt, err)` | MonadError |
 | `from_either` | `either.fold(F.raiseError, F.pure)` | `F.fromEither(either)` | MonadError |
 | `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` | MonadError |
 | `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` | MonadError |
