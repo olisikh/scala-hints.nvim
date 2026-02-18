@@ -66,9 +66,9 @@ require('scala-hints').setup()
 | [[Installation]] | Detailed installation instructions for various plugin managers |
 | [[Configuration]] | Full configuration options and per-query customization |
 | [[Patterns]] | Complete pattern catalog with detection rules and replacements |
-| [[Cats-Tagless-Final]] | Deep dive into evidence-gated `F[_]` patterns |
-| [[Architecture]] | Internal architecture and module responsibilities |
-| [[Troubleshooting]] | Common issues and solutions |
+| [[ZIO]] | Deep dive into ZIO 2.x patterns (35 patterns) |
+| [[Cats-Effect]] | Deep dive into Cats-Effect 3.x patterns (40 patterns) |
+| [[Cats-Tagless-Final]] | Deep dive into evidence-gated `F[_]` patterns (15 patterns) |
 | [[Contributing]] | How to add new patterns and contribute |
 
 ## Links
