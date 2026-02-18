@@ -1,21 +1,27 @@
 # scala-hints.nvim
 
-Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code. Uses Treesitter for AST matching, Metals LSP for type verification, and native Neovim diagnostics / code-action hooks.
+Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code.
 
 ## Features
 
-- **ZIO (35) + Cats-Effect (40) + Cats tagless-final (15) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
-- **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
-- **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO or Cats-Effect types
-- **Evidence-gated** — Cats tagless-final patterns verify typeclass evidence (Functor/Monad/etc.) in the enclosing `def` signature
-- **Per-query severity** — configure each pattern as `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`
-- **Async** — all queries run via `plenary.async` with configurable timeouts
+- **90 Treesitter patterns** detecting common effect code smells with idiomatic replacements
+  - 35 ZIO patterns
+  - 40 Cats-Effect patterns  
+  - 15 Cats tagless-final patterns
+- **Native diagnostics & code actions** via `vim.diagnostic.set()` and LSP handler
+- **Metals-aware** — type verification ensures replacements only apply to actual effect types
+- **Evidence-gated** — tagless-final patterns verify typeclass bounds in enclosing `def` signatures
+- **Configurable severity** — set each pattern as `HINT`, `INFO`, `WARN`, `ERROR`, or `OFF`
 
 ## Requirements
 
-Neovim 0.11+
+- Neovim 0.11+
+- [nvim-metals](https://github.com/scalameta/nvim-metals)
+- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 
 ## Installation
+
+**lazy.nvim:**
 
 ```lua
 {
@@ -28,204 +34,55 @@ Neovim 0.11+
 }
 ```
 
-Call `require('scala-hints').setup()` to init the plugin.
-The plugin listens on `LspAttach`, only runs on Scala buffers, and uses Metals type definition (`textDocument/typeDefinition`) for type checks.
-
-### Configuration
-
-```lua
-require('scala-hints').setup({
-  logging = {
-    enabled = true, -- Enable file logging
-    level = 'INFO', -- Log level: debug|info|warn|error, case-insensitive
-  },
-  type_definition = {
-    timeouts_ms = { 400, 1000, 2000 }, -- Retry schedule for Metals textDocument/typeDefinition (ms)
-    max_inflight = 4, -- Max concurrent requests per buffer
-  },
-  diagnostics = {
-    default_severity = 'HINT', -- Default diagnostic severity
-    overrides = {
-      ['zio/zip_left_value'] = 'OFF', -- Disable a specific diagnostic
-      ['zio/zip_right_operator'] = 'OFF',
-      ['zio/zio_die'] = 'WARN', -- Elevate severity for a specific diagnostic
-    },
-    excluded_libs = {}, -- Exclude libraries from diagnostics (performance), e.g. { "zio", "cats-effect", "cats" }
-  },
-  actions = {
-    excluded_libs = {}, -- Exclude libraries from code actions (performance), e.g. { "zio", "cats-effect", "cats" }
-  },
-})
-```
-
 ## Usage
 
-1. Open a Scala file where Metals is running.
-2. Diagnostics appear automatically (default severity: `HINT`).
-3. Apply fixes via `:lua vim.lsp.buf.code_action()` or your preferred keymap.
+1. Open a Scala file with Metals running
+2. Diagnostics appear automatically (default: `HINT` severity)
+3. Apply fixes via `:lua vim.lsp.buf.code_action()` or your keymap
 
 ### Commands
 
 | Command | Description |
 | --- | --- |
-| `:ScalaHintsApplyBuffer` | Apply all scala-hints fixes in the current buffer |
+| `:ScalaHintsApplyBuffer` | Apply all fixes in the current buffer |
 
-The `:ScalaHintsApplyBuffer` command applies all available fixes at once. If multiple fixes overlap (e.g., a `println` fix inside a `traverse_` fix), overlapping fixes are skipped to prevent broken code. Run the command again to apply remaining fixes after the buffer is re-analyzed.
+## Configuration
 
-## Pattern Catalog
-
-### ZIO (35 patterns)
-
-| Pattern | Detection | Replacement |
-| :--- | :--- | :--- |
-| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` |
-| `map_unit` | `.map(_ => ())` | `.unit` |
-| `as_unit` | `.as(())` | `.unit` |
-| `zip_right_unit` | `*> ZIO.unit` | `.unit` |
-| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` |
-| `zip_right_operator` | `.zipRight(v)` | `*> v` |
-| `zip_left_value` | `.tap(_ => v)` | `.zipLeft(v)` |
-| `flat_map_value` | `.flatMap(_ => v)` | `.zipRight(v)` |
-| `map_value` | `.map(_ => v)` | `.as(v)` |
-| `zio_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` |
-| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` |
-| `zio_cond` | `ZIO.cond(cond, (), err)` | `ZIO.fail(err).unless(cond)` |
-| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` |
-| `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` |
-| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` |
-| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` |
-| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` |
-| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` |
-| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` |
-| `zio_type` | `ZIO[Any, Throwable, A]` | `Task[A]` |
-| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` |
-| `zlayer_type` | `ZLayer[Any, Throwable, A]` | `TaskLayer[A]` |
-| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` |
-| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` |
-| `zio_either` | `ZIO.succeed(Left(v))` | `ZIO.left(v)` |
-| `zio_either` | `ZIO.succeed(Right(v))` | `ZIO.right(v)` |
-| `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` |
-| `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` |
-| `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` |
-| `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` |
-| `tap` | `.map(v => { sideEffect(v); v })` | `.tap(sideEffect)` |
-| `tap_error` | `.mapError(e => { sideEffect(e); e })` | `.tapError(sideEffect)` |
-| `tap_both` | chained `map`/`mapError` side-effects | `.tapBoth(...)` |
-| `when` | `if (cond) eff else ZIO.unit` | `eff.when(cond)` |
-| `unless` | `if (!cond) eff else ZIO.unit` | `eff.unless(cond)` |
-| `exit_code_map` | `.map(_ => ExitCode.success)` | `.exitCode` |
-| `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` |
-| `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` |
-
-### Cats-Effect (40 patterns)
-
-| Pattern | Detection | Replacement |
-| :--- | :--- | :--- |
-| `map_unit` | `.map(_ => ())` | `.void` |
-| `map_value` | `.map(_ => v)` | `.as(v)` |
-| `pure_unit` | `Applicative[F].pure(())` | `Applicative[F].unit` |
-| `as_unit` | `.as(())` | `.void` |
-| `zip_right_unit` | `*> IO.unit` | `.void` |
-| `zip_right_value` | `*> F.pure(v)` | `.as(v)` |
-| `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` |
-| `unless_a` | `if (!cond) fa else F.unit` | `fa.unlessA(cond)` |
-| `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` |
-| `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError(...)` |
-| `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` |
-| `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` |
-| `recover_with` | `.handleErrorWith(e => ...)` | `.recoverWith(...)` |
-| `adapt_error` | `.adaptError(...)` | `.adaptError(...)` |
-| `from_option` | `opt.fold(IO.raiseError(err))(IO.pure)` | `IO.fromOption(opt)(err)` |
-| `from_either` | `either.fold(IO.raiseError, IO.pure)` | `IO.fromEither(either)` |
-| `from_try` | `Try(...).fold(IO.raiseError, IO.pure)` | `IO.fromTry(...)` |
-| `par_tupled` | `(fa, fb).parTupled` | `(fa, fb).parTupled` |
-| `par_sequence` | `.parSequence` | `.parSequence` |
-| `par_sequence_` | `.parSequence_` | `.parSequence_` |
-| `traverse` | `.traverse(...)` | `.traverse(...)` |
-| `traverse_` | `.traverse_(...)` | `.traverse_(...)` |
-| `delay_by` | `.delayBy(duration)` | `.delayBy(duration)` |
-| `timeout` | `.timeout(duration)` | `.timeout(duration)` |
-| `bracket` | `.bracket(...)` | `.bracket(...)` |
-| `println` | `IO(println(x))` | `IO.println(x)` |
-| `println_apply` | `IO.apply(println(x))` | `IO.println(x)` |
-| `print` | `IO(print(x))` | `IO.print(x)` |
-| `print_apply` | `IO.apply(print(x))` | `IO.print(x)` |
-
-Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
-
-### Cats Tagless-Final (15 patterns)
-
-Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (context bounds / implicit / using) in the enclosing `def`:
-
-| Pattern | Detection | Replacement | Evidence |
-| :--- | :--- | :--- | :--- |
-| `map_unit` | `fa.map(_ => ())` | `fa.void` | Functor |
-| `map_value` | `fa.map(_ => v)` | `fa.as(v)` | Functor |
-| `flat_map_value` | `fa.flatMap(_ => fb)` | `fa *> fb` | Apply |
-| `product_l` | `fa.flatMap(a => fb.as(a))` | `fa <* fb` | Apply |
-| `flat_tap` | `fa.flatMap(a => effect.as(a))` | `fa.flatTap(a => effect)` | FlatMap |
-| `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` | Applicative |
-| `unless_a` | `if (!cond) fa else F.unit` | `fa.unlessA(cond)` | Applicative |
-| `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` | Monad |
-| `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError` | MonadError |
-| `raise_when` | `if (cond) F.raiseError(err) else F.unit` | `F.raiseWhen(cond)(err)` | MonadError |
-| `raise_unless` | `if (!cond) F.raiseError(err) else F.unit` | `F.raiseUnless(cond)(err)` | MonadError |
-| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt, err)` | MonadError |
-| `from_either` | `either.fold(F.raiseError, F.pure)` | `F.fromEither(either)` | MonadError |
-| `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` | MonadError |
-| `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` | MonadError |
-
-## Architecture
-
-```text
-  BufWritePost / BufEnter          vim.lsp.buf.code_action()
-         |                                |
-         v                                v
-  diagnostics.lua                   actions.lua
-         \                              /
-          +---- query.run_query -------+
-                      |
-              handler(bufnr, matches)
-                      |
-         +------------+------------+
-         |                         |
-  vim.diagnostic.set()    LSP code-action response
+```lua
+require('scala-hints').setup({
+  diagnostics = {
+    default_severity = 'HINT',
+    overrides = {
+      ['zio/zip_left_value'] = 'OFF',
+      ['zio/zio_die'] = 'WARN',
+    },
+  },
+})
 ```
 
-| Module | Responsibility |
-| --- | --- |
-| `init.lua` | Registers namespace, Metals-gated autocommands, and code-action wrapper |
-| `diagnostics.lua` | Collects diagnostics by running Treesitter queries |
-| `actions.lua` | Resolves code actions for a given range |
-| `query.lua` | Generic query execution engine |
-| `libs/zio/queries.lua` | All 35 ZIO Treesitter query definitions and handlers |
-| `libs/cats-effect/init.lua` | Cats-Effect library registry module |
-| `libs/cats-effect/queries.lua` | All 36 Cats-Effect Treesitter query definitions and handlers |
-| `libs/cats/init.lua` | Cats tagless-final library registry module |
-| `libs/cats/queries.lua` | All 15 Cats tagless-final Treesitter query definitions and handlers |
-| `cats/evidence.lua` | Typeclass evidence detector for F[_] patterns |
-| `semantic.lua` | LSP type definition verification and caching |
-| `utils.lua` | Async helpers, node inspection, Metals readiness polling |
-| `client.lua` | LSP client management |
-| `constants.lua` | Shared metadata (namespace name, filetype) |
+See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/Configuration) for all options.
+
+## Documentation
+
+Full documentation is available on the [Wiki](https://github.com/olisikh/scala-hints.nvim/wiki):
+
+- [Pattern Catalog](https://github.com/olisikh/scala-hints.nvim/wiki/Patterns) — all 90 patterns with detection rules
+- [ZIO Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/ZIO) — deep dive into ZIO patterns
+- [Cats-Effect Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Effect) — IO/Resource patterns
+- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Tagless-Final) — evidence-gated F[_] patterns
 
 ## Troubleshooting
 
-- **No diagnostics?** Metals must signal readiness (`MetalsReady` / `MetalsInitialized`) before diagnostics appear.
-- **Diagnostics disappear after undo?** Reopen the buffer or trigger a save to force a refresh.
-- **False positives?** Some handlers skip Metals type definition verification. Check [AGENTS.md](AGENTS.md) for details on which patterns are LSP-dependent.
+- **No diagnostics?** Wait for Metals to initialize (`MetalsReady` / `MetalsInitialized`)
+- **Diagnostics disappear after undo?** Reopen the buffer or save to refresh
 
 ## Contributing
 
-1. Read [AGENTS.md](AGENTS.md) for the pattern catalog, architecture details, and addition guide.
-2. Use `:InspectTree` to understand the AST shape you want to target.
-3. Add your handler to the appropriate `libs/*/queries.lua`, register it in the libs registry, and add tests.
-4. See [TODO.md](TODO.md) for remaining roadmap items.
+See [AGENTS.md](AGENTS.md) for architecture details and the pattern addition guide.
 
 ## References
 
 - [ZIO Documentation](https://zio.dev/)
+- [Cats-Effect Documentation](https://typelevel.org/cats-effect/)
 - [IntelliJ ZIO Plugin](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features)
-- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
 - [nvim-metals](https://github.com/scalameta/nvim-metals)
-- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
