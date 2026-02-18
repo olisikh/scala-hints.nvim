@@ -351,3 +351,55 @@ end)
       assert.are.equal(0, #ready)
     end)
   end)
+
+  describe('product_l', function()
+    it('matches flatMap(a => fb.as(a)) when Apply evidence exists', function()
+      local source = [=[
+        def foo[F[_]: Apply](fa: F[Int], fb: F[String]) = fa.flatMap(a => fb.as(a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.product_l)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = ' <* fb',
+      })
+    end)
+
+    it('matches flatMap(a => fb.map(_ => a)) when Apply evidence exists', function()
+      local source = [=[
+        def foo[F[_]: Apply](fa: F[Int], fb: F[String]) = fa.flatMap(a => fb.map(_ => a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.product_l)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = ' <* fb',
+      })
+    end)
+
+    it('does not match when parameter is not returned', function()
+      local source = [=[
+        def foo[F[_]: Apply](fa: F[Int], fb: F[String]) = fa.flatMap(a => fb.as(42))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.product_l)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match without Apply evidence', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int], fb: F[String]) = fa.flatMap(a => fb.as(a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.product_l)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)

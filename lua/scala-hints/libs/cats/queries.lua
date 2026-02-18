@@ -814,4 +814,70 @@ return {
       }
     end,
   },
+  -- fa.flatMap(a => fb.as(a)) ~> fa <* fb
+  -- fa.flatMap(a => fb.map(_ => a)) ~> fa <* fb
+  product_l = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (_) @_4
+    )
+  ) @_5
+)
+]]),
+    handler = function(bufnr, matches)
+      local start = matches[1][1]
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local body = matches[4][1]
+      local finish = matches[5][1]
+
+      if not evidence.has_capability(bufnr, target, 'Apply') then
+        return {}
+      end
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local body_text = utils.get_node_text(bufnr, body)
+
+      -- Check if body is fb.as(a) or fb.map(_ => a)
+      local effect_text
+
+      -- Match fb.as(a) where a is the parameter
+      local as_match = body_text:match('^(.-)%.as%(' .. vim.pesc(param_text) .. '%)$')
+      if as_match then
+        effect_text = vim.trim(as_match)
+      end
+
+      -- Match fb.map(_ => a) where a is the parameter
+      if not effect_text then
+        local map_match = body_text:match('^(.-)%.map%(_%s*=>%s*' .. vim.pesc(param_text) .. '%)$')
+        if map_match then
+          effect_text = vim.trim(map_match)
+        end
+      end
+
+      if not effect_text then
+        return {}
+      end
+
+      local _, _, start_row, start_col = start:range()
+      local dstart_row, dstart_col, _, _ = target:range()
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = ' <* ' .. effect_text,
+          title = 'Cats: replace .flatMap(a => fb.as(a)) with fa <* fb',
+        },
+      }
+    end,
+  },
 }
