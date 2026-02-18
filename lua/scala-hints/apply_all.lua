@@ -114,7 +114,7 @@ function M._apply_diagnostic_fix(bufnr, diag)
       if resp_client_id == client_id and response.result and #response.result > 0 then
         local action = response.result[1]
         if action.edit then
-          vim.lsp.util.apply_workspace_edit(action.edit, 'UTF-16')
+          vim.lsp.util.apply_workspace_edit(action.edit, 'utf-16')
           applied = true
           break
         elseif action.command then
