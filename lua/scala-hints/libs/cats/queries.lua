@@ -880,4 +880,64 @@ return {
       }
     end,
   },
+
+  -- fa.flatMap(a => effect.as(a)) ~> fa.flatTap(a => effect)
+  flat_tap = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_1
+    field: (identifier) @_2 (#eq? @_2 "flatMap")
+  )
+  arguments: (arguments
+    (lambda_expression
+      parameters: (identifier) @_3
+      (call_expression
+        function: (field_expression
+          value: (_) @_4
+          field: (identifier) @_5 (#eq? @_5 "as")
+        )
+        arguments: (arguments
+          (identifier) @_6
+        )
+      ) @_7
+    )
+  ) @_8
+)
+]]),
+    handler = function(bufnr, matches)
+      local target = matches[2][1]
+      local param = matches[3][1]
+      local effect = matches[4][1]
+      local param_value = matches[6][1]
+      local finish = matches[8][1]
+
+      local param_text = utils.get_node_text(bufnr, param)
+      local value_text = utils.get_node_text(bufnr, param_value)
+
+      -- Verify the parameter is returned via .as()
+      if param_text ~= value_text then
+        return {}
+      end
+
+      if not evidence.has_capability(bufnr, target, 'FlatMap') then
+        return {}
+      end
+
+      local effect_text = utils.get_node_text(bufnr, effect)
+
+      local dstart_row, dstart_col, _, _ = target:range()
+      local start_col = math.max(0, dstart_col - 1)
+      local _, _, end_row, end_col = finish:range()
+
+      return {
+        {
+          diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
+          action = { start_row = dstart_row, start_col = start_col, end_row = end_row, end_col = end_col },
+          replacement = '.flatTap(' .. param_text .. ' => ' .. effect_text .. ')',
+          title = 'Cats: replace .flatMap(a => effect.as(a)) with .flatTap(a => effect)',
+        },
+      }
+    end,
+  },
 }

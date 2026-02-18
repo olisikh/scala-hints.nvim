@@ -165,7 +165,7 @@ describe('Cats tagless queries', function()
       })
     end)
   end)
-end)
+
   describe('raise_when', function()
     it('matches if (cond) F.raiseError(err) else F.unit when MonadError evidence exists', function()
       local source = [=[
@@ -403,3 +403,42 @@ end)
       assert.are.equal(0, #ready)
     end)
   end)
+
+  describe('flat_tap', function()
+    it('matches flatMap(a => effect.as(a)) when FlatMap evidence exists', function()
+      local source = [=[
+        def foo[F[_]: FlatMap](fa: F[Int], effect: F[Unit]) = fa.flatMap(a => effect.as(a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.flat_tap)
+      assert.are.equal(0, #pending)
+      assert.are.equal(1, #ready)
+      H.assert_result(ready[1], {
+        replacement = '.flatTap(a => effect)',
+      })
+    end)
+
+    it('does not match when parameter is not returned', function()
+      local source = [=[
+        def foo[F[_]: FlatMap](fa: F[Int], effect: F[Unit]) = fa.flatMap(a => effect.as(42))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.flat_tap)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+
+    it('does not match without FlatMap evidence', function()
+      local source = [=[
+        def foo[F[_]](fa: F[Int], effect: F[Unit]) = fa.flatMap(a => effect.as(a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.flat_tap)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+  end)
+end)
