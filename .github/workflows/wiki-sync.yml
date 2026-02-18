@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  sync:
+  sync-wiki:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
