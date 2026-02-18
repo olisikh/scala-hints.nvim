@@ -112,44 +112,35 @@ object CatsEffectSmells:
   }
 
   // ============================================================================
-  // Parallelism & Traversal (5 patterns)
+  // Parallelism & Traversal (2 patterns)
   // ============================================================================
 
-  // par_tupled: (io1, io2).parMapN -> (io1, io2).parTupled
-  def smell23 = (IO(1), IO(2)).parMapN((a, b) => (a, b))
-  
-  // par_sequence: IO.parSequence -> IO.parSequence
-  def smell24 = List(IO(1), IO(2), IO(3)).parSequence
-  
-  // par_sequence_: IO.parSequence_ -> IO.parSequence_
-  def smell25 = List(IO(1), IO(2), IO(3)).parSequence_
-  
   // traverse: .map(f).sequence -> .traverse(f)
-  def smell26 = List(1, 2, 3).map(x => IO(x * 2)).sequence
+  def smell23 = List(1, 2, 3).map(x => IO(x * 2)).sequence
   
   // traverse_: .map(f).sequence_ -> .traverse_(f)
-  def smell27 = List(1, 2, 3).map(x => IO(println(x))).sequence_
+  def smell24 = List(1, 2, 3).map(x => IO(println(x))).sequence_
 
   // ============================================================================
   // Timing (1 pattern)
   // ============================================================================
 
   // delay_by: IO.sleep(d) *> effect -> effect.delayBy(d)
-  def smell28 = IO.sleep(1.second) *> IO(42)
+  def smell25 = IO.sleep(1.second) *> IO(42)
 
   // ============================================================================
   // Monadic Operations (1 pattern)
   // ============================================================================
 
   // if_m: fb.flatMap(b => if (b) fa else fc) -> fb.ifM(fa, fc)
-  def smell29 = IO(true).flatMap(b => if (b) IO("yes") else IO("no"))
+  def smell26 = IO(true).flatMap(b => if (b) IO("yes") else IO("no"))
 
   // ============================================================================
   // Additional Patterns
   // ============================================================================
 
   // map_n: for-comprehension with constructor yield -> .mapN
-  def smell30 = for {
+  def smell27 = for {
     a <- IO(1)
     b <- IO(2)
   } yield (a, b)
