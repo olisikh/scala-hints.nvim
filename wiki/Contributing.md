@@ -39,9 +39,6 @@ make test-cats
 
 # All library query tests
 make test-libs
-
-# Query engine tests
-make test-engine
 ```
 
 Or run individual test files:

@@ -1,4 +1,4 @@
-.PHONY: test test-zio test-cats-effect test-cats test-engine
+.PHONY: test test-zio test-cats-effect test-cats test-libs
 
 NVIM_TEST := nvim --headless --clean -u tests/minimal_init.lua
 PLENARY_OPTS := {minimal_init = 'tests/minimal_init.lua'}
@@ -21,7 +21,3 @@ test-cats:
 
 # Run all library query tests
 test-libs: test-zio test-cats-effect test-cats
-
-# Run query engine tests
-test-engine:
-	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/ {minimal_init = 'tests/minimal_init.lua', sequential = true}"
