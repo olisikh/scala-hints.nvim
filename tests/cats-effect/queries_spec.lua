@@ -1087,4 +1087,120 @@ describe('Cats-Effect queries with type definition verification', function()
       assert.are.equal(0, #pending)
     end)
   end)
+
+  ---------------------------------------------------------------------------
+  -- println
+  ---------------------------------------------------------------------------
+  describe('println', function()
+    it('matches IO(println(x)) and suggests IO.println(x)', function()
+      local source = [[val x = IO(println("hello"))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.println)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.println("hello")',
+        title = 'CE: replace IO(println(...)) with IO.println(...)',
+      })
+    end)
+
+    it('matches IO(println(x)) with variable', function()
+      local source = [[val x = IO(println(msg))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.println)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.println(msg)',
+        title = 'CE: replace IO(println(...)) with IO.println(...)',
+      })
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- println_apply
+  ---------------------------------------------------------------------------
+  describe('println_apply', function()
+    it('matches IO.apply(println(x)) and suggests IO.println(x)', function()
+      local source = [[val x = IO.apply(println("hello"))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.println_apply)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.println("hello")',
+        title = 'CE: replace IO.apply(println(...)) with IO.println(...)',
+      })
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- print
+  ---------------------------------------------------------------------------
+  describe('print', function()
+    it('matches IO(print(x)) and suggests IO.print(x)', function()
+      local source = [[val x = IO(print("hello"))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.print)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.print("hello")',
+        title = 'CE: replace IO(print(...)) with IO.print(...)',
+      })
+    end)
+
+    it('matches IO(print(x)) with variable', function()
+      local source = [[val x = IO(print(msg))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.print)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.print(msg)',
+        title = 'CE: replace IO(print(...)) with IO.print(...)',
+      })
+    end)
+  end)
+
+  ---------------------------------------------------------------------------
+  -- print_apply
+  ---------------------------------------------------------------------------
+  describe('print_apply', function()
+    it('matches IO.apply(print(x)) and suggests IO.print(x)', function()
+      local source = [[val x = IO.apply(print("hello"))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.print_apply)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'IO.print("hello")',
+        title = 'CE: replace IO.apply(print(...)) with IO.print(...)',
+      })
+    end)
+  end)
 end)
