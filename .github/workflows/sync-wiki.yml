@@ -16,9 +16,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Sync wiki folder to GitHub wiki
-        uses: gouef/github-wiki-sync-repository-action@v1.0.1
-        with:
-          source: wiki
-          user-name: Oleksii Lisikh
-          user-email: alisiikh@gmail.com
+      - name: Sync wiki
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+
+          cd wiki
+
+          git config --global --add safe.directory "$(pwd)"
+          git config user.name "Oleksii Lisikh"
+          git config user.email "alisiikh@gmail.com"
+
+          rm -rf *
+          cp -r ../wiki/* .
+
+          git add .
+          git commit -m "action: wiki sync" || echo "No changes to commit"
+          git push
