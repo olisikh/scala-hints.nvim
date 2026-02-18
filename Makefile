@@ -1,4 +1,4 @@
-.PHONY: test test-pure test-lsp test-engine
+.PHONY: test test-zio test-cats-effect test-cats test-engine
 
 NVIM_TEST := nvim --headless --clean -u tests/minimal_init.lua
 PLENARY_OPTS := {minimal_init = 'tests/minimal_init.lua'}
@@ -7,10 +7,21 @@ PLENARY_OPTS := {minimal_init = 'tests/minimal_init.lua'}
 test:
 	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/ $(PLENARY_OPTS)"
 
-# Run only pure (no-LSP) ZIO query tests
-test-pure:
+# Run ZIO query tests
+test-zio:
 	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/zio/ $(PLENARY_OPTS)"
 
-# Run only query engine tests
+# Run Cats-Effect query tests
+test-cats-effect:
+	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/cats-effect/ $(PLENARY_OPTS)"
+
+# Run Cats tagless-final query tests
+test-cats:
+	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/cats/ $(PLENARY_OPTS)"
+
+# Run all library query tests
+test-libs: test-zio test-cats-effect test-cats
+
+# Run query engine tests
 test-engine:
 	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/ {minimal_init = 'tests/minimal_init.lua', sequential = true}"
