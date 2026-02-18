@@ -228,10 +228,10 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local left = matches[1][1]
-      local op = matches[2][1]
       local finish = matches[5][1]
 
-      local start_row, start_col, _, _ = op:range()
+      -- Start from end of left side to include any whitespace before *>
+      local _, _, start_row, start_col = left:range()
       local dstart_row, dstart_col, end_row, end_col = finish:range()
 
       local replaced = utils.get_node_text(bufnr, finish)
@@ -320,12 +320,12 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local left = matches[1][1]
-      local op = matches[2][1]
       local target = matches[5][1]
       local value = matches[6][1]
       local finish = matches[7][1]
 
-      local start_row, start_col, _, _ = op:range()
+      -- Start from end of left side to include any whitespace before *>
+      local _, _, start_row, start_col = left:range()
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
