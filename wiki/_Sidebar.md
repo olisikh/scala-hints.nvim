@@ -1,6 +1,5 @@
 ## scala-hints.nvim
 
-- [[Home]]
 - [[Installation]]
 - [[Configuration]]
 - [[Patterns]]
