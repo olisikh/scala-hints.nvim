@@ -1,0 +1,21 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Sync docs to wiki
+        uses: joeizzard/action-wiki-sync@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          source-folder: docs
