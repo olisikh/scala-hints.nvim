@@ -4,7 +4,7 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ## Features
 
-- **ZIO (35) + Cats-Effect (36) + Cats tagless-final (15) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
+- **ZIO (35) + Cats-Effect (40) + Cats tagless-final (15) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
 - **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
 - **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO or Cats-Effect types
 - **Evidence-gated** — Cats tagless-final patterns verify typeclass evidence (Functor/Monad/etc.) in the enclosing `def` signature
@@ -82,7 +82,7 @@ Patterns across constructors, combinators, error handling, type aliases, and hel
 | **Transform helpers** | `tap`, `tap_error`, `tap_both`, `when`, `unless` |
 | **Exit codes** | `exit_code_map`, `exit_code_as`, `exit_code_fold` |
 
-### Cats-Effect (IO/Resource, 36 patterns)
+### Cats-Effect (IO/Resource, 40 patterns)
 
 Cats-Effect hints cover common IO/Resource idioms and include:
 
@@ -94,6 +94,7 @@ Cats-Effect hints cover common IO/Resource idioms and include:
 | **Lifting values** | `from_option`, `from_either`, `from_try`, match-based variants |
 | **Parallelism & traversal** | `par_tupled`, `par_sequence`, `par_sequence_`, `traverse`, `traverse_` |
 | **Timing & resources** | `delay_by`, `timeout`, `bracket` |
+| **Console output** | `println`, `println_apply`, `print`, `print_apply` |
 
 Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 

@@ -101,8 +101,15 @@
 
 ### Cats-Effect Patterns (IO/Resource)
 
-36 Cats-Effect patterns implemented in [libs/cats-effect/queries.lua](lua/scala-hints/libs/cats-effect/queries.lua).
-Examples and motivation live in the tests under `tests/cats_effect/`.
+40 Cats-Effect patterns implemented in [libs/cats-effect/queries.lua](lua/scala-hints/libs/cats-effect/queries.lua).
+Examples and motivation live in the tests under `tests/cats-effect/`.
+
+| Pattern | Detection | Replacement |
+| :--- | :--- | :--- |
+| `println` | `IO(println(x))` | `IO.println(x)` |
+| `println_apply` | `IO.apply(println(x))` | `IO.println(x)` |
+| `print` | `IO(print(x))` | `IO.print(x)` |
+| `print_apply` | `IO.apply(print(x))` | `IO.print(x)` |
 
 ### Cats Tagless-Final Patterns (F[_])
 

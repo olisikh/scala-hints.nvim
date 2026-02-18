@@ -14,9 +14,9 @@ Example transformations:
 
 ## Features
 
-- **86 Treesitter patterns** across three effect libraries:
+- **90 Treesitter patterns** across three effect libraries:
   - **35 ZIO patterns** — constructors, combinators, error handling, type aliases, timing, service access
-  - **36 Cats-Effect patterns** — IO/Resource idioms, parallelism, error recovery, resource safety
+  - **40 Cats-Effect patterns** — IO/Resource idioms, parallelism, error recovery, resource safety, console output
   - **15 Cats tagless-final patterns** — evidence-gated `F[_]` patterns (Functor, Apply, Monad, MonadError)
 - **Native diagnostics** via `vim.diagnostic.set()`
 - **Code actions** integrated with LSP handler

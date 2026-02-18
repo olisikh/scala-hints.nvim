@@ -2,12 +2,12 @@
 
 ## Overview
 
-**86 total patterns** across 3 effect libraries, detecting common code smells and suggesting idiomatic replacements.
+**90 total patterns** across 3 effect libraries, detecting common code smells and suggesting idiomatic replacements.
 
 | Library | Patterns | Type Verification |
 | --- | --- | --- |
 | [ZIO](#zio-patterns-35) | 35 | Metals LSP `textDocument/typeDefinition` |
-| [Cats-Effect](#cats-effect-patterns-36) | 36 | Metals LSP `textDocument/typeDefinition` |
+| [Cats-Effect](#cats-effect-patterns-40) | 40 | Metals LSP `textDocument/typeDefinition` |
 | [Cats Tagless-Final](#cats-tagless-final-patterns-15) | 15 | Local evidence detection |
 
 ---
@@ -74,7 +74,7 @@ Patterns for ZIO 2.x effect types, covering constructors, combinators, error han
 
 ---
 
-## Cats-Effect Patterns (36)
+## Cats-Effect Patterns (40)
 
 Patterns for Cats-Effect 3.x `IO` and `Resource` types.
 
@@ -88,6 +88,7 @@ Patterns for Cats-Effect 3.x `IO` and `Resource` types.
 | **Lifting values** | `from_option`, `from_either`, `from_try`, match-based variants |
 | **Parallelism & traversal** | `par_tupled`, `par_sequence`, `par_sequence_`, `traverse`, `traverse_` |
 | **Timing & resources** | `delay_by`, `timeout`, `bracket` |
+| **Console output** | `println`, `println_apply`, `print`, `print_apply` |
 
 ### Example Transformations
 
@@ -103,6 +104,9 @@ opt.fold(IO.raiseError(e))(IO.pure)  →  IO.fromOption(opt)(e)
 
 // when_a
 if (cond) io else IO.unit  →  io.whenA(cond)
+
+// println
+IO(println("hello"))  →  IO.println("hello")
 ```
 
 **See also**: [Cats-Effect Documentation](https://typelevel.org/cats-effect/)
