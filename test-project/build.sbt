@@ -1,7 +1,7 @@
 // Test project for scala-hints.nvim pattern verification
 // This project contains intentional code smells to test the plugin
 
-val scala3Version = "3.3.3"
+val scala3Version = "3.8.1"
 
 val zioVersion = "2.1.7"
 val catsEffectVersion = "3.5.7"
@@ -16,6 +16,7 @@ lazy val root = project
     libraryDependencies ++= Seq(
       // ZIO
       "dev.zio" %% "zio" % zioVersion,
+      "dev.zio" %% "zio-streams" % zioVersion,
       "dev.zio" %% "zio-test" % zioVersion % Test,
       
       // Cats-Effect
