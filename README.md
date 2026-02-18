@@ -76,42 +76,89 @@ The `:ScalaHintsApplyBuffer` command applies all available fixes at once. If mul
 
 ### ZIO (35 patterns)
 
-Patterns across constructors, combinators, error handling, type aliases, and helpers:
+| Pattern | Detection | Replacement |
+| :--- | :--- | :--- |
+| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` |
+| `map_unit` | `.map(_ => ())` | `.unit` |
+| `as_unit` | `.as(())` | `.unit` |
+| `zip_right_unit` | `*> ZIO.unit` | `.unit` |
+| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` |
+| `zip_right_operator` | `.zipRight(v)` | `*> v` |
+| `zip_left_value` | `.tap(_ => v)` | `.zipLeft(v)` |
+| `flat_map_value` | `.flatMap(_ => v)` | `.zipRight(v)` |
+| `map_value` | `.map(_ => v)` | `.as(v)` |
+| `zio_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` |
+| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` |
+| `zio_cond` | `ZIO.cond(cond, (), err)` | `ZIO.fail(err).unless(cond)` |
+| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` |
+| `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` |
+| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` |
+| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` |
+| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` |
+| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` |
+| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` |
+| `zio_type` | `ZIO[Any, Throwable, A]` | `Task[A]` |
+| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` |
+| `zlayer_type` | `ZLayer[Any, Throwable, A]` | `TaskLayer[A]` |
+| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` |
+| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` |
+| `zio_either` | `ZIO.succeed(Left(v))` | `ZIO.left(v)` |
+| `zio_either` | `ZIO.succeed(Right(v))` | `ZIO.right(v)` |
+| `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` |
+| `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` |
+| `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` |
+| `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` |
+| `tap` | `.map(v => { sideEffect(v); v })` | `.tap(sideEffect)` |
+| `tap_error` | `.mapError(e => { sideEffect(e); e })` | `.tapError(sideEffect)` |
+| `tap_both` | chained `map`/`mapError` side-effects | `.tapBoth(...)` |
+| `when` | `if (cond) eff else ZIO.unit` | `eff.when(cond)` |
+| `unless` | `if (!cond) eff else ZIO.unit` | `eff.unless(cond)` |
+| `exit_code_map` | `.map(_ => ExitCode.success)` | `.exitCode` |
+| `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` |
+| `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` |
 
-| Category | Patterns |
-| --- | --- |
-| **Constructors & units** | `succeed_unit`, `map_unit`, `as_unit`, `zip_right_unit`, `zip_right_value` |
-| **Combinators** | `zip_left_value`, `zip_right_operator`, `flat_map_value`, `map_value`, `zio_foreach`, `foreach_par_n`, `fold_cause_ignore` |
-| **Error handling** | `zio_die`, `zio_cond`, `catch_all_unit`, `or_else_fail`, `or_else_fail2`, `or_else_fail3` |
-| **Type aliases** | `zio_type`, `zlayer_type` |
-| **Option/Either** | `zio_none`, `zio_some`, `zio_either` |
-| **Timing & layers** | `delay`, `to_layer`, `provide_layer` |
-| **Service access** | `zio_service` |
-| **Transform helpers** | `tap`, `tap_error`, `tap_both`, `when`, `unless` |
-| **Exit codes** | `exit_code_map`, `exit_code_as`, `exit_code_fold` |
+### Cats-Effect (40 patterns)
 
-### Cats-Effect (IO/Resource, 40 patterns)
-
-Cats-Effect hints cover common IO/Resource idioms and include:
-
-| Category | Examples |
-| --- | --- |
-| **Discard/replace value** | `map_unit`, `map_value`, `pure_unit`, `as_unit` |
-| **Sequencing & control flow** | `zip_right_unit`, `zip_right_value`, `when_a`, `unless_a`, `if_m` |
-| **Error handling** | `handle_error`, `redeem`, `recover_with`, `adapt_error` |
-| **Lifting values** | `from_option`, `from_either`, `from_try`, match-based variants |
-| **Parallelism & traversal** | `par_tupled`, `par_sequence`, `par_sequence_`, `traverse`, `traverse_` |
-| **Timing & resources** | `delay_by`, `timeout`, `bracket` |
-| **Console output** | `println`, `println_apply`, `print`, `print_apply` |
+| Pattern | Detection | Replacement |
+| :--- | :--- | :--- |
+| `map_unit` | `.map(_ => ())` | `.void` |
+| `map_value` | `.map(_ => v)` | `.as(v)` |
+| `pure_unit` | `Applicative[F].pure(())` | `Applicative[F].unit` |
+| `as_unit` | `.as(())` | `.void` |
+| `zip_right_unit` | `*> IO.unit` | `.void` |
+| `zip_right_value` | `*> F.pure(v)` | `.as(v)` |
+| `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` |
+| `unless_a` | `if (!cond) fa else F.unit` | `fa.unlessA(cond)` |
+| `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` |
+| `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError(...)` |
+| `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` |
+| `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` |
+| `recover_with` | `.handleErrorWith(e => ...)` | `.recoverWith(...)` |
+| `adapt_error` | `.adaptError(...)` | `.adaptError(...)` |
+| `from_option` | `opt.fold(IO.raiseError(err))(IO.pure)` | `IO.fromOption(opt)(err)` |
+| `from_either` | `either.fold(IO.raiseError, IO.pure)` | `IO.fromEither(either)` |
+| `from_try` | `Try(...).fold(IO.raiseError, IO.pure)` | `IO.fromTry(...)` |
+| `par_tupled` | `(fa, fb).parTupled` | `(fa, fb).parTupled` |
+| `par_sequence` | `.parSequence` | `.parSequence` |
+| `par_sequence_` | `.parSequence_` | `.parSequence_` |
+| `traverse` | `.traverse(...)` | `.traverse(...)` |
+| `traverse_` | `.traverse_(...)` | `.traverse_(...)` |
+| `delay_by` | `.delayBy(duration)` | `.delayBy(duration)` |
+| `timeout` | `.timeout(duration)` | `.timeout(duration)` |
+| `bracket` | `.bracket(...)` | `.bracket(...)` |
+| `println` | `IO(println(x))` | `IO.println(x)` |
+| `println_apply` | `IO.apply(println(x))` | `IO.println(x)` |
+| `print` | `IO(print(x))` | `IO.print(x)` |
+| `print_apply` | `IO.apply(print(x))` | `IO.print(x)` |
 
 Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
-### Cats Tagless-Final (F[_], 15 patterns)
+### Cats Tagless-Final (15 patterns)
 
 Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (context bounds / implicit / using) in the enclosing `def`:
 
 | Pattern | Detection | Replacement | Evidence |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | `map_unit` | `fa.map(_ => ())` | `fa.void` | Functor |
 | `map_value` | `fa.map(_ => v)` | `fa.as(v)` | Functor |
 | `flat_map_value` | `fa.flatMap(_ => fb)` | `fa *> fb` | Apply |
