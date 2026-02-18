@@ -1752,23 +1752,33 @@ return {
   },
 
   -- coll.map(f).sequence ~> coll.traverse(f)
+  -- Note: We verify the IO type inside the lambda, not the whole expression,
+  -- because .sequence is from cats.syntax, not cats.effect.IO
   traverse = {
     query = parse_query([[
 (field_expression
   value: (call_expression
     function: (field_expression
-      value: (_) @_1
-      field: (identifier) @_2 (#eq? @_2 "map")
+      value: (_) @_coll
+      field: (identifier) @_map (#eq? @_map "map")
     )
-    arguments: (arguments (_) @_3)
-  ) @_4
-  field: (identifier) @_5 (#eq? @_5 "sequence")
-) @_6
+    arguments: (arguments
+      (lambda_expression
+        parameters: (identifier)
+        (call_expression
+          function: (identifier) @_io (#eq? @_io "IO")
+        ) @_io_call
+      ) @_func
+    )
+  )
+  field: (identifier) @_sequence (#eq? @_sequence "sequence")
+) @_full
 ]]),
     handler = function(bufnr, matches)
       local coll = matches[1][1]
-      local func = matches[3][1]
-      local full = matches[6][1]
+      local io_node = matches[3][1]
+      local func = matches[5][1]
+      local full = matches[7][1]
 
       local coll_text = utils.get_node_text(bufnr, coll)
       local func_text = utils.get_node_text(bufnr, func)
@@ -1787,7 +1797,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -1806,18 +1816,26 @@ return {
 (field_expression
   value: (call_expression
     function: (field_expression
-      value: (_) @_1
-      field: (identifier) @_2 (#eq? @_2 "map")
+      value: (_) @_coll
+      field: (identifier) @_map (#eq? @_map "map")
     )
-    arguments: (arguments (_) @_3)
-  ) @_4
-  field: (identifier) @_5 (#eq? @_5 "sequence_")
-) @_6
+    arguments: (arguments
+      (lambda_expression
+        parameters: (identifier)
+        (call_expression
+          function: (identifier) @_io (#eq? @_io "IO")
+        ) @_io_call
+      ) @_func
+    )
+  )
+  field: (identifier) @_sequence (#eq? @_sequence "sequence_")
+) @_full
 ]]),
     handler = function(bufnr, matches)
       local coll = matches[1][1]
-      local func = matches[3][1]
-      local full = matches[6][1]
+      local io_node = matches[3][1]
+      local func = matches[5][1]
+      local full = matches[7][1]
 
       local coll_text = utils.get_node_text(bufnr, coll)
       local func_text = utils.get_node_text(bufnr, func)
@@ -1836,7 +1854,7 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, full, is_cats_io_type, function(is_ce)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else
@@ -2548,6 +2566,198 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, verify_target, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- IO(println(x)) ~> IO.println(x)
+  println = {
+    query = parse_query([[
+(call_expression
+  function: (identifier) @_io (#eq? @_io "IO")
+  arguments: (arguments
+    (call_expression
+      function: (identifier) @_println (#eq? @_println "println")
+      arguments: (arguments) @_args
+    ) @_inner
+  )
+) @_finish
+]]),
+    handler = function(bufnr, matches)
+      local io_node = matches[1][1]
+      local args_node = matches[3][1]
+      local finish = matches[5][1]
+
+      local args_text = utils.get_node_text(bufnr, args_node)
+      local start_row, start_col, _, _ = io_node:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'IO.println' .. args_text,
+        title = 'CE: replace IO(println(...)) with IO.println(...)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- IO.apply(println(x)) ~> IO.println(x)
+  println_apply = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_io (#eq? @_io "IO")
+    field: (identifier) @_apply (#eq? @_apply "apply")
+  )
+  arguments: (arguments
+    (call_expression
+      function: (identifier) @_println (#eq? @_println "println")
+      arguments: (arguments) @_args
+    ) @_inner
+  )
+) @_finish
+]]),
+    handler = function(bufnr, matches)
+      local io_node = matches[1][1]
+      local args_node = matches[4][1]
+      local finish = matches[6][1]
+
+      local args_text = utils.get_node_text(bufnr, args_node)
+      local start_row, start_col, _, _ = io_node:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        replacement = 'IO.println' .. args_text,
+        title = 'CE: replace IO.apply(println(...)) with IO.println(...)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- IO(print(x)) ~> IO.print(x)
+  print = {
+    query = parse_query([[
+(call_expression
+  function: (identifier) @_io (#eq? @_io "IO")
+  arguments: (arguments
+    (call_expression
+      function: (identifier) @_print (#eq? @_print "print")
+      arguments: (arguments) @_args
+    ) @_inner
+  )
+) @_finish
+]]),
+    handler = function(bufnr, matches)
+      local io_node = matches[1][1]
+      local args_node = matches[3][1]
+      local finish = matches[5][1]
+
+      local args_text = utils.get_node_text(bufnr, args_node)
+      local start_row, start_col, _, _ = io_node:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        diagnostic_severity = 'INFO',
+        replacement = 'IO.print' .. args_text,
+        title = 'CE: replace IO(print(...)) with IO.print(...)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
+              if is_ce then
+                done(item)
+              else
+                done(nil)
+              end
+            end)
+          end,
+        },
+      }
+    end,
+  },
+
+  -- IO.apply(print(x)) ~> IO.print(x)
+  print_apply = {
+    query = parse_query([[
+(call_expression
+  function: (field_expression
+    value: (_) @_io (#eq? @_io "IO")
+    field: (identifier) @_apply (#eq? @_apply "apply")
+  )
+  arguments: (arguments
+    (call_expression
+      function: (identifier) @_print (#eq? @_print "print")
+      arguments: (arguments) @_args
+    ) @_inner
+  )
+) @_finish
+]]),
+    handler = function(bufnr, matches)
+      local io_node = matches[1][1]
+      local args_node = matches[4][1]
+      local finish = matches[6][1]
+
+      local args_text = utils.get_node_text(bufnr, args_node)
+      local start_row, start_col, _, _ = io_node:range()
+      local _, _, end_row, end_col = finish:range()
+
+      local item = {
+        diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
+        action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
+        diagnostic_severity = 'INFO',
+        replacement = 'IO.print' .. args_text,
+        title = 'CE: replace IO.apply(print(...)) with IO.print(...)',
+      }
+
+      return {
+        ready = {},
+        pending = {
+          function(done)
+            semantic.type_definition_predicate(bufnr, io_node, is_cats_io_type, function(is_ce)
               if is_ce then
                 done(item)
               else

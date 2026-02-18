@@ -1,0 +1,806 @@
+# ZIO Patterns
+
+## Overview
+
+ZIO is a type-safe, composable library for async and concurrent programming in Scala. The core effect type `ZIO[R, E, A]` represents an effect that requires an environment `R`, may fail with error `E`, and succeeds with value `A`.
+
+**Type verification**: All ZIO patterns use Metals LSP `textDocument/typeDefinition` to verify that matched expressions are actual ZIO types. This ensures replacements only apply to genuine ZIO code, not similarly-named types from other libraries.
+
+**Common type aliases:**
+
+```scala
+UIO[A]    = ZIO[Any, Nothing, A]    // No requirements, no errors
+Task[A]   = ZIO[Any, Throwable, A]  // No requirements, may throw
+RIO[R, A] = ZIO[R, Throwable, A]    // Requires R, may throw
+URIO[R, A] = ZIO[R, Nothing, A]     // Requires R, no errors
+IO[E, A]  = ZIO[Any, E, A]          // No requirements, custom error
+```
+
+## Patterns
+
+### Constructors & Units
+
+#### `succeed_unit` — Use ZIO.unit
+
+**Detection:** `ZIO.succeed(())`
+
+**Replacement:** `ZIO.unit`
+
+```scala
+// Before
+val effect: UIO[Unit] = ZIO.succeed(())
+
+// After
+val effect: UIO[Unit] = ZIO.unit
+```
+
+---
+
+#### `map_unit` — Discard result with unit
+
+**Detection:** `zio.map(_ => ())`
+
+**Replacement:** `zio.unit`
+
+```scala
+// Before
+def process(users: List[User]): Task[Unit] =
+  saveUsers(users).map(_ => ())
+
+// After
+def process(users: List[User]): Task[Unit] =
+  saveUsers(users).unit
+```
+
+---
+
+#### `as_unit` — Replace with unit
+
+**Detection:** `zio.as(())`
+
+**Replacement:** `zio.unit`
+
+```scala
+// Before
+val logged: Task[Unit] = logEvent.as(())
+
+// After
+val logged: Task[Unit] = logEvent.unit
+```
+
+---
+
+#### `zip_right_unit` — Sequence and discard
+
+**Detection:** `effect *> ZIO.unit`
+
+**Replacement:** `effect.unit`
+
+```scala
+// Before
+def cleanup: Task[Unit] = 
+  deleteFiles *> ZIO.unit
+
+// After
+def cleanup: Task[Unit] = 
+  deleteFiles.unit
+```
+
+---
+
+#### `zip_right_value` — Sequence and replace result
+
+**Detection:** `effect *> ZIO.succeed(value)`
+
+**Replacement:** `effect.as(value)`
+
+```scala
+// Before
+def fetchAndCount: Task[Int] =
+  fetchUsers *> ZIO.succeed(42)
+
+// After
+def fetchAndCount: Task[Int] =
+  fetchUsers.as(42)
+```
+
+---
+
+### Combinators
+
+#### `zip_right_operator` — Use *> operator
+
+**Detection:** `zio.zipRight(effect)`
+
+**Replacement:** `zio *> effect`
+
+```scala
+// Before
+def process: Task[Result] =
+  loadConfig.zipRight(compute)
+
+// After
+def process: Task[Result] =
+  loadConfig *> compute
+```
+
+---
+
+#### `zip_left_value` — Keep left, sequence right
+
+**Detection:** `zio.tap(_ => effect)` (unused parameter)
+
+**Replacement:** `zio <* effect` or `zio.zipLeft(effect)`
+
+```scala
+// Before
+def withAudit: Task[User] =
+  fetchUser.tap(_ => logAccess)
+
+// After
+def withAudit: Task[User] =
+  fetchUser <* logAccess
+```
+
+---
+
+#### `flat_map_value` — Sequence and discard parameter
+
+**Detection:** `zio.flatMap(_ => effect)`
+
+**Replacement:** `zio *> effect` or `zio.zipRight(effect)`
+
+```scala
+// Before
+def pipeline: Task[Result] =
+  validateInput.flatMap(_ => computeResult)
+
+// After
+def pipeline: Task[Result] =
+  validateInput *> computeResult
+```
+
+---
+
+#### `map_value` — Replace result with constant
+
+**Detection:** `zio.map(_ => value)`
+
+**Replacement:** `zio.as(value)`
+
+```scala
+// Before
+def getStatus: Task[Boolean] =
+  checkHealth.map(_ => true)
+
+// After
+def getStatus: Task[Boolean] =
+  checkHealth.as(true)
+```
+
+---
+
+### Error Handling
+
+#### `zio_die` — Convert failure to defect
+
+**Detection:** `ZIO.fail(ex).orDie`
+
+**Replacement:** `ZIO.die(ex)`
+
+```scala
+// Before
+def requireNonEmpty(list: List[Int]): Task[List[Int]] =
+  if (list.isEmpty) ZIO.fail(EmptyListError).orDie
+  else ZIO.succeed(list)
+
+// After
+def requireNonEmpty(list: List[Int]): Task[List[Int]] =
+  if (list.isEmpty) ZIO.die(EmptyListError)
+  else ZIO.succeed(list)
+```
+
+---
+
+#### `catch_all_unit` — Ignore all errors
+
+**Detection:** `zio.catchAll(_ => ZIO.unit)`
+
+**Replacement:** `zio.ignore`
+
+```scala
+// Before
+def attemptSave: Task[Unit] =
+  saveToCache.catchAll(_ => ZIO.unit)
+
+// After
+def attemptSave: Task[Unit] =
+  saveToCache.ignore
+```
+
+---
+
+#### `zio_cond` — Conditional failure
+
+**Detection:** `ZIO.cond(condition, (), error)`
+
+**Replacement:** `ZIO.fail(error).unless(condition)`
+
+```scala
+// Before
+def validate(input: String): IO[String, Unit] =
+  ZIO.cond(input.nonEmpty, (), "Input cannot be empty")
+
+// After
+def validate(input: String): IO[String, Unit] =
+  ZIO.fail("Input cannot be empty").unless(input.nonEmpty)
+```
+
+---
+
+#### `fold_cause_ignore` — Ignore all outcomes
+
+**Detection:** `zio.foldCause(_ => (), _ => ())`
+
+**Replacement:** `zio.ignore`
+
+```scala
+// Before
+def fireAndForget: Task[Unit] =
+  sendNotification.foldCause(_ => (), _ => ())
+
+// After
+def fireAndForget: Task[Unit] =
+  sendNotification.ignore
+```
+
+---
+
+#### `or_else_fail` — Replace error with constant
+
+**Detection:** `zio.mapError(_ => value)`
+
+**Replacement:** `zio.orElseFail(value)`
+
+```scala
+// Before
+def fetch: IO[String, User] =
+  queryDatabase.mapError(_ => "Database error")
+
+// After
+def fetch: IO[String, User] =
+  queryDatabase.orElseFail("Database error")
+```
+
+---
+
+#### `or_else_fail2` — Fallback to failure
+
+**Detection:** `zio.orElse(ZIO.fail(value))`
+
+**Replacement:** `zio.orElseFail(value)`
+
+```scala
+// Before
+def fetchWithFallback: IO[String, User] =
+  fetchFromCache.orElse(ZIO.fail("Not found"))
+
+// After
+def fetchWithFallback: IO[String, User] =
+  fetchFromCache.orElseFail("Not found")
+```
+
+---
+
+#### `or_else_fail3` — Transform error then fail
+
+**Detection:** `zio.flatMapError(_ => ZIO.succeed(value))`
+
+**Replacement:** `zio.orElseFail(value)`
+
+```scala
+// Before
+def process: IO[AppError, Result] =
+  queryService.flatMapError(_ => ZIO.succeed(AppError.ServiceUnavailable))
+
+// After
+def process: IO[AppError, Result] =
+  queryService.orElseFail(AppError.ServiceUnavailable)
+```
+
+---
+
+### Type Aliases
+
+#### `zio_type` — Use type alias
+
+**Detection:** `ZIO[Any, Nothing, A]`, `ZIO[Any, Throwable, A]`, etc.
+
+**Replacement:** `UIO[A]`, `Task[A]`, `IO[E, A]`, `URIO[R, A]`, `RIO[R, A]`
+
+```scala
+// Before
+def fetch: ZIO[Any, Throwable, User]
+
+// After
+def fetch: Task[User]
+
+// Before
+def compute: ZIO[Database, Nothing, Result]
+
+// After
+def compute: URIO[Database, Result]
+```
+
+---
+
+#### `zlayer_type` — Use layer type alias
+
+**Detection:** `ZLayer[Any, Nothing, A]`, `ZLayer[Any, Throwable, A]`, etc.
+
+**Replacement:** `ULayer[A]`, `TaskLayer[A]`, `Layer[E, A]`, `URLayer[R, A]`, `RLayer[R, A]`
+
+```scala
+// Before
+val userLayer: ZLayer[Any, Nothing, UserService] = ???
+
+// After
+val userLayer: ULayer[UserService] = ???
+
+// Before
+val dbLayer: ZLayer[Config, Throwable, Database] = ???
+
+// After
+val dbLayer: RLayer[Config, Database] = ???
+```
+
+---
+
+### Option & Either
+
+#### `zio_none` — Lift None to ZIO
+
+**Detection:** `ZIO.succeed(None)` or `ZIO.succeed(Option.empty[A])`
+
+**Replacement:** `ZIO.none`
+
+```scala
+// Before
+def findUser(id: UserId): Task[Option[User]] =
+  if (id.value.isEmpty) ZIO.succeed(None)
+  else queryDatabase(id)
+
+// After
+def findUser(id: UserId): Task[Option[User]] =
+  if (id.value.isEmpty) ZIO.none
+  else queryDatabase(id)
+```
+
+---
+
+#### `zio_some` — Lift Some to ZIO
+
+**Detection:** `ZIO.succeed(Some(value))` or `ZIO.succeed(Option(value))`
+
+**Replacement:** `ZIO.some(value)`
+
+```scala
+// Before
+def wrapResult(value: Int): Task[Option[Int]] =
+  ZIO.succeed(Some(value))
+
+// After
+def wrapResult(value: Int): Task[Option[Int]] =
+  ZIO.some(value)
+```
+
+---
+
+#### `zio_either` — Lift Either to ZIO
+
+**Detection:** `ZIO.succeed(Left(value))` or `ZIO.succeed(Right(value))`
+
+**Replacement:** `ZIO.left(value)` or `ZIO.right(value)`
+
+```scala
+// Before
+def divide(a: Int, b: Int): IO[String, Int] =
+  if (b == 0) ZIO.succeed(Left("Division by zero"))
+  else ZIO.succeed(Right(a / b))
+
+// After
+def divide(a: Int, b: Int): IO[String, Int] =
+  if (b == 0) ZIO.left("Division by zero")
+  else ZIO.right(a / b)
+```
+
+---
+
+### Timing & Layers
+
+#### `delay` — Schedule effect for later
+
+**Detection:** `ZIO.sleep(duration) *> effect`
+
+**Replacement:** `effect.delay(duration)`
+
+```scala
+// Before
+def delayedProcess: Task[Unit] =
+  ZIO.sleep(5.seconds) *> processBatch
+
+// After
+def delayedProcess: Task[Unit] =
+  processBatch.delay(5.seconds)
+```
+
+---
+
+#### `to_layer` — Convert effect to layer
+
+**Detection:** `ZLayer.fromEffect(effect)`
+
+**Replacement:** `effect.toLayer`
+
+```scala
+// Before
+val serviceLayer: ULayer[UserService] =
+  ZLayer.fromEffect(ZIO.succeed(UserService.live))
+
+// After
+val serviceLayer: ULayer[UserService] =
+  ZIO.succeed(UserService.live).toLayer
+```
+
+---
+
+#### `provide_layer` — Provide layer directly
+
+**Detection:** `layer.build.use(effect.provide)`
+
+**Replacement:** `effect.provideLayer(layer)`
+
+```scala
+// Before
+def program: Task[Result] =
+  dbLayer.build.use(database => compute.provide(database))
+
+// After
+def program: Task[Result] =
+  compute.provideLayer(dbLayer)
+```
+
+---
+
+### Service Access
+
+#### `zio_service` — Access service from environment
+
+**Detection:** `ZIO.access(identity)`
+
+**Replacement:** `ZIO.service[A]`
+
+```scala
+// Before
+def getDatabase: URIO[Database, Database] =
+  ZIO.access(identity)
+
+// After
+def getDatabase: URIO[Database, Database] =
+  ZIO.service[Database]
+```
+
+---
+
+### Transform Helpers
+
+#### `tap` — Side-effect on success
+
+**Detection:** `zio.map(a => { sideEffect(a); a })`
+
+**Replacement:** `zio.tap(a => sideEffect(a))`
+
+```scala
+// Before
+def fetchWithLog: Task[User] =
+  fetchUser.map(u => { log(s"Got: $u"); u })
+
+// After
+def fetchWithLog: Task[User] =
+  fetchUser.tap(u => log(s"Got: $u"))
+```
+
+---
+
+#### `tap_error` — Side-effect on failure
+
+**Detection:** `zio.mapError(e => { logError(e); e })`
+
+**Replacement:** `zio.tapError(e => logError(e))`
+
+```scala
+// Before
+def fetchWithErrorLog: Task[User] =
+  fetchUser.mapError(e => { logger.error(e); e })
+
+// After
+def fetchWithErrorLog: Task[User] =
+  fetchUser.tapError(e => logger.error(e))
+```
+
+---
+
+#### `tap_both` — Side-effect on both outcomes
+
+**Detection:** Chained `map`/`mapError` with side-effects
+
+**Replacement:** `zio.tapBoth(errorFn, successFn)`
+
+```scala
+// Before
+def fetchWithAudit: Task[User] =
+  fetchUser
+    .mapError(e => { audit.failed(e); e })
+    .map(u => { audit.succeeded(u); u })
+
+// After
+def fetchWithAudit: Task[User] =
+  fetchUser.tapBoth(
+    e => audit.failed(e),
+    u => audit.succeeded(u)
+  )
+```
+
+---
+
+#### `when` — Conditional execution
+
+**Detection:** `if (condition) effect else ZIO.unit`
+
+**Replacement:** `effect.when(condition)`
+
+```scala
+// Before
+def maybeSave(enabled: Boolean): Task[Unit] =
+  if (enabled) saveToDatabase else ZIO.unit
+
+// After
+def maybeSave(enabled: Boolean): Task[Unit] =
+  saveToDatabase.when(enabled)
+```
+
+---
+
+#### `unless` — Conditional execution (negated)
+
+**Detection:** `if (!condition) effect else ZIO.unit`
+
+**Replacement:** `effect.unless(condition)`
+
+```scala
+// Before
+def skipIfCached(isCached: Boolean): Task[Unit] =
+  if (!isCached) fetchFromSource else ZIO.unit
+
+// After
+def skipIfCached(isCached: Boolean): Task[Unit] =
+  fetchFromSource.unless(isCached)
+```
+
+---
+
+### Exit Codes
+
+#### `exit_code_map` — Convert to exit code
+
+**Detection:** `effect.map(_ => ExitCode.success)`
+
+**Replacement:** `effect.exitCode`
+
+```scala
+// Before
+def run(args: List[String]): UIO[ExitCode] =
+  program.map(_ => ExitCode.success)
+
+// After
+def run(args: List[String]): UIO[ExitCode] =
+  program.exitCode
+```
+
+---
+
+#### `exit_code_as` — Set exit code
+
+**Detection:** `effect.as(ExitCode.success)`
+
+**Replacement:** `effect.exitCode`
+
+```scala
+// Before
+def run(args: List[String]): UIO[ExitCode] =
+  program.as(ExitCode.success)
+
+// After
+def run(args: List[String]): UIO[ExitCode] =
+  program.exitCode
+```
+
+---
+
+#### `exit_code_fold` — Handle both outcomes for exit code
+
+**Detection:** `effect.fold(_ => ExitCode.failure, _ => ExitCode.success)`
+
+**Replacement:** `effect.exitCode`
+
+```scala
+// Before
+def run(args: List[String]): UIO[ExitCode] =
+  program.fold(_ => ExitCode.failure, _ => ExitCode.success)
+
+// After
+def run(args: List[String]): UIO[ExitCode] =
+  program.exitCode
+```
+
+---
+
+### Collections
+
+#### `zio_foreach` — Transform and collect
+
+**Detection:** `ZIO.collectAll(coll.map(f))`
+
+**Replacement:** `ZIO.foreach(coll)(f)`
+
+```scala
+// Before
+def processAll(users: List[User]): Task[List[Result]] =
+  ZIO.collectAll(users.map(u => processUser(u)))
+
+// After
+def processAll(users: List[User]): Task[List[Result]] =
+  ZIO.foreach(users)(u => processUser(u))
+```
+
+---
+
+#### `foreach_par_n` — Parallel with limit
+
+**Detection:** `ZIO.foreachPar(coll)(f)`
+
+**Replacement:** `ZIO.foreachParN(n)(coll)(f)`
+
+```scala
+// Before
+def processInParallel(users: List[User]): Task[List[Result]] =
+  ZIO.foreachPar(users)(u => processUser(u))
+
+// After (with explicit parallelism limit)
+def processInParallel(users: List[User]): Task[List[Result]] =
+  ZIO.foreachParN(10)(users)(u => processUser(u))
+```
+
+---
+
+## Full Examples
+
+### Service Layer
+
+```scala
+trait UserService:
+  def findById(id: UserId): Task[Option[User]]
+  def create(user: User): Task[User]
+  def delete(id: UserId): Task[Unit]
+
+object UserService:
+  val live: URLayer[UserRepository, UserService] = ZLayer {
+    for
+      repo <- ZIO.service[UserRepository]
+    yield UserServiceLive(repo)
+  }
+
+  private final class UserServiceLive(repo: UserRepository) extends UserService:
+    def findById(id: UserId): Task[Option[User]] =
+      repo.find(id)
+        .tap(user => ZIO.when(user.isDefined)(log(s"Found: $user")))
+
+    def create(user: User): Task[User] =
+      validateUser(user)
+        .flatMap(repo.save)
+        .tapBoth(
+          err => logError(s"Create failed: $err"),
+          user => log(s"Created: $user")
+        )
+
+    def delete(id: UserId): Task[Unit] =
+      repo.delete(id)
+        .when(id.value.nonEmpty)
+        .unit
+```
+
+### HTTP Handler with Error Handling
+
+```scala
+object UserRoutes:
+  def routes: HttpRoutes[Task] = HttpRoutes.of[Task] {
+    case GET -> Root / "users" / userId =>
+      (for
+        id <- ZIO.fromOption(UserId.fromString(userId))
+          .orElseFail(InvalidUserId)
+        user <- UserService.findById(id)
+          .someOrFail(UserNotFound)
+      yield Response.ok.withEntity(user))
+        .exitCode  // Only applies to main, shown for pattern demo
+  }
+```
+
+### Application Entry Point
+
+```scala
+object MainApp extends ZIOAppDefault:
+  def run: ZIO[Any, Nothing, ExitCode] =
+    (for
+      _ <- loadConfig.tap(c => log(s"Config: $c"))
+      _ <- startServer
+      _ <- waitForShutdown
+    yield ())
+      .exitCode
+      .provide(
+        ConfigLayer.live,
+        ServerLayer.live,
+        UserService.live
+      )
+```
+
+---
+
+## Pattern Summary Table
+
+| Pattern | Detection | Replacement |
+|---------|-----------|-------------|
+| `succeed_unit` | `ZIO.succeed(())` | `ZIO.unit` |
+| `map_unit` | `.map(_ => ())` | `.unit` |
+| `as_unit` | `.as(())` | `.unit` |
+| `zip_right_unit` | `*> ZIO.unit` | `.unit` |
+| `zip_right_value` | `*> ZIO.succeed(v)` | `.as(v)` |
+| `zip_right_operator` | `.zipRight(v)` | `*> v` |
+| `zip_left_value` | `.tap(_ => v)` | `<* v` |
+| `flat_map_value` | `.flatMap(_ => v)` | `*> v` |
+| `map_value` | `.map(_ => v)` | `.as(v)` |
+| `zio_die` | `ZIO.fail(ex).orDie` | `ZIO.die(ex)` |
+| `catch_all_unit` | `.catchAll(_ => ZIO.unit)` | `.ignore` |
+| `zio_cond` | `ZIO.cond(cond, (), err)` | `ZIO.fail(err).unless(cond)` |
+| `fold_cause_ignore` | `.foldCause(_ => (), _ => ())` | `.ignore` |
+| `or_else_fail` | `.mapError(_ => v)` | `.orElseFail(v)` |
+| `or_else_fail2` | `.orElse(ZIO.fail(v))` | `.orElseFail(v)` |
+| `or_else_fail3` | `.flatMapError(_ => ZIO.succeed(v))` | `.orElseFail(v)` |
+| `zio_type` | `ZIO[Any, Nothing, A]` | `UIO[A]` |
+| `zlayer_type` | `ZLayer[Any, Nothing, A]` | `ULayer[A]` |
+| `zio_none` | `ZIO.succeed(None)` | `ZIO.none` |
+| `zio_some` | `ZIO.succeed(Some(v))` | `ZIO.some(v)` |
+| `zio_either` | `ZIO.succeed(Left/Right(v))` | `ZIO.left/right(v)` |
+| `delay` | `ZIO.sleep(d) *> effect` | `effect.delay(d)` |
+| `to_layer` | `ZLayer.fromEffect(eff)` | `eff.toLayer` |
+| `provide_layer` | `layer.build.use(effect.provide)` | `effect.provideLayer(layer)` |
+| `zio_service` | `ZIO.access(identity)` | `ZIO.service[A]` |
+| `tap` | `.map(v => { sideEffect(v); v })` | `.tap(sideEffect)` |
+| `tap_error` | `.mapError(e => { sideEffect(e); e })` | `.tapError(sideEffect)` |
+| `tap_both` | chained `map`/`mapError` side-effects | `.tapBoth(...)` |
+| `when` | `if (cond) eff else ZIO.unit` | `eff.when(cond)` |
+| `unless` | `if (!cond) eff else ZIO.unit` | `eff.unless(cond)` |
+| `exit_code_map` | `.map(_ => ExitCode.success)` | `.exitCode` |
+| `exit_code_as` | `.as(ExitCode.success)` | `.exitCode` |
+| `exit_code_fold` | `.fold(...ExitCode...)` | `.exitCode` |
+| `zio_foreach` | `ZIO.collectAll(coll.map(f))` | `ZIO.foreach(coll)(f)` |
+| `foreach_par_n` | `ZIO.foreachPar(coll)(f)` | `ZIO.foreachParN(n)(coll)(f)` |
+
+---
+
+## See Also
+
+- [Cats-Effect Patterns](Cats-Effect.md)
+- [Cats Tagless-Final Patterns](Cats-Tagless-Final.md)
+- [ZIO Documentation](https://zio.dev/)
+- [ZIO Type Aliases](https://zio.dev/reference/core/zio/zio-type-aliases)
+- [IntelliJ ZIO Plugin](https://github.com/zio/zio-intellij)
