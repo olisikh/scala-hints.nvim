@@ -1,7 +1,6 @@
 // Cats Tagless-Final Smells - All 15 patterns
 // Each pattern has a comment showing the expected replacement
 // Run Metals on this file to see scala-hints.nvim diagnostics
-// NOTE: These patterns require typeclass evidence in the enclosing def signature
 
 package smells
 
@@ -23,20 +22,16 @@ object CatsTaglessSmells:
     fa.map(_ => "hello")
 
   // ============================================================================
-  // Apply Patterns (2 patterns)
+  // FlatMap Patterns (3 patterns)
   // ============================================================================
 
-  // flat_map_value: fa.flatMap(_ => fb) -> fa *> fb (requires Apply)
-  def smell3[F[_]: Apply](fa: F[Int], fb: F[String]): F[String] =
+  // flat_map_value: fa.flatMap(_ => fb) -> fa *> fb (requires FlatMap)
+  def smell3[F[_]: FlatMap](fa: F[Int], fb: F[String]): F[String] =
     fa.flatMap(_ => fb)
 
-  // product_l: fa.flatMap(a => fb.as(a)) -> fa <* fb (requires Apply)
-  def smell4[F[_]: Apply](fa: F[Int], fb: F[String]): F[Int] =
+  // product_l: fa.flatMap(a => fb.as(a)) -> fa <* fb (requires FlatMap)
+  def smell4[F[_]: FlatMap](fa: F[Int], fb: F[String]): F[Int] =
     fa.flatMap(a => fb.as(a))
-
-  // ============================================================================
-  // FlatMap Patterns (1 pattern)
-  // ============================================================================
 
   // flat_tap: fa.flatMap(a => effect.as(a)) -> fa.flatTap(a => effect) (requires FlatMap)
   def smell5[F[_]: FlatMap](fa: F[Int], effect: F[Unit]): F[Int] =
@@ -86,7 +81,7 @@ object CatsTaglessSmells:
     opt.fold(F.raiseError(new Exception("none")))(F.pure)
 
   // from_either: either.fold(F.raiseError, F.pure) -> F.fromEither(either) (requires MonadError)
-  def smell13[F[_]](either: Either[String, Int])(implicit F: MonadError[F, String]): F[Int] =
+  def smell13[F[_]](either: Either[Throwable, Int])(implicit F: MonadError[F, Throwable]): F[Int] =
     either.fold(F.raiseError, F.pure)
 
   // redeem: .attempt.map { case Right/Left ... } -> .redeem (requires MonadError)

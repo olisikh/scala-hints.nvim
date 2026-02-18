@@ -5,7 +5,6 @@
 package smells
 
 import zio.*
-import zio.stream.ZStream
 
 object ZioSmells:
 
@@ -52,22 +51,22 @@ object ZioSmells:
   def smell10(ex: Throwable) = ZIO.fail(ex).orDie
   
   // catch_all_unit: .catchAll(_ => ZIO.unit) -> .ignore
-  def smell11 = ZIO.succeed(42).catchAll(_ => ZIO.unit)
+  def smell11 = ZIO.fail("error").catchAll(_ => ZIO.unit)
   
   // zio_cond: ZIO.cond(cond, (), err) -> ZIO.fail(err).unless(cond)
   def smell12(cond: Boolean, err: String) = ZIO.cond(cond, (), err)
   
   // fold_cause_ignore: .foldCause(_ => (), _ => ()) -> .ignore
-  def smell13 = ZIO.succeed(42).foldCause(_ => (), _ => ())
+  def smell13 = ZIO.fail("error").foldCause(_ => (), _ => ())
   
   // or_else_fail: .mapError(_ => v) -> .orElseFail(v)
-  def smell14 = ZIO.succeed(42).mapError(_ => "fallback error")
+  def smell14 = ZIO.fail("error").mapError(_ => "fallback error")
   
   // or_else_fail2: .orElse(ZIO.fail(v)) -> .orElseFail(v)
-  def smell15 = ZIO.succeed(42).orElse(ZIO.fail("fallback error"))
+  def smell15 = ZIO.fail("error").orElse(ZIO.fail("fallback error"))
   
   // or_else_fail3: .flatMapError(_ => ZIO.succeed(v)) -> .orElseFail(v)
-  def smell16 = ZIO.succeed(42).flatMapError(_ => ZIO.succeed("fallback error"))
+  def smell16 = ZIO.fail("error").flatMapError(_ => ZIO.succeed("fallback error"))
 
   // ============================================================================
   // Type Aliases
@@ -110,61 +109,44 @@ object ZioSmells:
 
   // delay: ZIO.sleep(d) *> effect -> effect.delay(d)
   def smell26 = ZIO.sleep(1.second) *> ZIO.succeed("hello")
-  
-  // to_layer: ZLayer.fromEffect(eff) -> eff.toLayer
-  def smell27 = ZLayer.fromEffect(ZIO.succeed("hello"))
-  
-  // provide_layer: layer.build.use(effect.provide) -> effect.provideLayer(layer)
-  def smell28(layer: ZLayer[Any, Nothing, String]) = 
-    layer.build.use(env => ZIO.succeed("hello").provide(env))
-
-  // ============================================================================
-  // Service Access
-  // ============================================================================
-
-  // zio_service: ZIO.access(identity) -> ZIO.service[A]
-  def smell29 = ZIO.access[String](identity)
 
   // ============================================================================
   // Transform Helpers
   // ============================================================================
 
   // tap: .map(v => { sideEffect(v); v }) -> .tap(sideEffect)
-  def smell30 = ZIO.succeed(42).map(v => { println(v); v })
+  def smell27 = ZIO.succeed(42).map(v => { println(v); v })
   
   // tap_error: .mapError(e => { sideEffect(e); e }) -> .tapError(sideEffect)
-  def smell31 = ZIO.fail("error").mapError(e => { println(e); e })
+  def smell28 = ZIO.fail("error").mapError(e => { println(e); e })
   
   // tap_both: chained map/mapError side-effects -> .tapBoth(...)
-  def smell32 = ZIO.succeed(42)
+  def smell29 = ZIO.fail("error")
     .map(v => { println(s"success: $v"); v })
     .mapError(e => { println(s"error: $e"); e })
   
   // when: if (cond) eff else ZIO.unit -> eff.when(cond)
-  def smell33(cond: Boolean) = if (cond) ZIO.succeed(42) else ZIO.unit
+  def smell30(cond: Boolean) = if (cond) ZIO.succeed(42) else ZIO.unit
   
   // unless: if (!cond) eff else ZIO.unit -> eff.unless(cond)
-  def smell34(cond: Boolean) = if (!cond) ZIO.succeed(42) else ZIO.unit
+  def smell31(cond: Boolean) = if (!cond) ZIO.succeed(42) else ZIO.unit
 
   // ============================================================================
   // Exit Codes
   // ============================================================================
 
   // exit_code_map: .map(_ => ExitCode.success) -> .exitCode
-  def smell35 = ZIO.succeed(42).map(_ => ExitCode.success)
+  def smell32 = ZIO.succeed(42).map(_ => ExitCode.success)
   
   // exit_code_as: .as(ExitCode.success) -> .exitCode
-  def smell36 = ZIO.succeed(42).as(ExitCode.success)
+  def smell33 = ZIO.succeed(42).as(ExitCode.success)
   
   // exit_code_fold: .fold(...ExitCode...) -> .exitCode
-  def smell37 = ZIO.succeed(42).fold(_ => ExitCode.failure, _ => ExitCode.success)
+  def smell34 = ZIO.fail("error").fold(_ => ExitCode.failure, _ => ExitCode.success)
 
   // ============================================================================
   // Collections
   // ============================================================================
 
   // zio_foreach: ZIO.collectAll(coll.map(f)) -> ZIO.foreach(coll)(f)
-  def smell38 = ZIO.collectAll(List(1, 2, 3).map(x => ZIO.succeed(x * 2)))
-  
-  // foreach_par_n: ZIO.foreachPar(coll)(f) -> ZIO.foreachParN(n)(coll)(f)
-  def smell39 = ZIO.foreachPar(List(1, 2, 3))(x => ZIO.succeed(x * 2))
+  def smell35 = ZIO.collectAll(List(1, 2, 3).map(x => ZIO.succeed(x * 2)))

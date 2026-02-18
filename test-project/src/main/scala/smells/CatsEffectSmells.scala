@@ -5,7 +5,6 @@
 package smells
 
 import cats.effect.*
-import cats.effect.kernel.Resource
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 
@@ -82,7 +81,7 @@ object CatsEffectSmells:
   def smell17(opt: Option[Int]) = opt.fold(IO.raiseError(new Exception("none")))(IO.pure)
   
   // from_either: either.fold(IO.raiseError, IO.pure) -> IO.fromEither(either)
-  def smell18(either: Either[String, Int]) = either.fold(IO.raiseError, IO.pure)
+  def smell18(either: Either[Throwable, Int]) = either.fold(IO.raiseError, IO.pure)
   
   // redeem: .attempt.map { case Right/Left ... } -> .redeem
   def smell19 = IO(42).attempt.map {
@@ -95,79 +94,62 @@ object CatsEffectSmells:
     case Right(a) => IO.pure(a)
     case Left(e) => IO.pure(-1)
   }
-  
-  // recover_with: .handleErrorWith(e => IO.raiseError(wrap)) -> .recoverWith
-  def smell21 = IO(42).handleErrorWith(e => IO.raiseError(new Exception(s"wrapped: ${e.getMessage}")))
 
   // ============================================================================
-  // Lifting Values (4 patterns)
+  // Lifting Values (2 patterns)
   // ============================================================================
 
   // from_option_match: Option match with IO.pure/IO.raiseError -> IO.fromOption
-  def smell22(opt: Option[Int]) = opt match {
+  def smell21(opt: Option[Int]) = opt match {
     case Some(a) => IO.pure(a)
     case None => IO.raiseError(new Exception("none"))
   }
   
   // from_either_match: Either match with IO.pure/IO.raiseError -> IO.fromEither
-  def smell23(either: Either[String, Int]) = either match {
+  def smell22(either: Either[Throwable, Int]) = either match {
     case Right(a) => IO.pure(a)
-    case Left(e) => IO.raiseError(new Exception(e))
+    case Left(e) => IO.raiseError(e)
   }
-  
-  // from_try: Try.fold(IO.raiseError, IO.pure) -> IO.fromTry
-  def smell24 = scala.util.Try(42).fold(IO.raiseError, IO.pure)
-  
-  // adapt_error: .handleErrorWith(e => IO.raiseError(wrap)) -> .adaptError
-  def smell25 = IO(42).handleErrorWith(e => IO.raiseError(new Exception(s"adapted: ${e.getMessage}")))
 
   // ============================================================================
-  // Parallelism & Traversal (6 patterns)
+  // Parallelism & Traversal (5 patterns)
   // ============================================================================
 
   // par_tupled: (io1, io2).parMapN -> (io1, io2).parTupled
-  def smell26 = (IO(1), IO(2)).parMapN((a, b) => (a, b))
+  def smell23 = (IO(1), IO(2)).parMapN((a, b) => (a, b))
   
   // par_sequence: IO.parSequence -> IO.parSequence
-  def smell27 = List(IO(1), IO(2), IO(3)).parSequence
+  def smell24 = List(IO(1), IO(2), IO(3)).parSequence
   
   // par_sequence_: IO.parSequence_ -> IO.parSequence_
-  def smell28 = List(IO(1), IO(2), IO(3)).parSequence_
+  def smell25 = List(IO(1), IO(2), IO(3)).parSequence_
   
   // traverse: .map(f).sequence -> .traverse(f)
-  def smell29 = List(1, 2, 3).map(x => IO(x * 2)).sequence
+  def smell26 = List(1, 2, 3).map(x => IO(x * 2)).sequence
   
   // traverse_: .map(f).sequence_ -> .traverse_(f)
-  def smell30 = List(1, 2, 3).map(x => IO(println(x))).sequence_
+  def smell27 = List(1, 2, 3).map(x => IO(println(x))).sequence_
 
   // ============================================================================
-  // Timing & Resources (3 patterns)
+  // Timing (1 pattern)
   // ============================================================================
 
-  // delay_by: Temporal[IO].sleep(d) *> effect -> effect.delayBy(d)
-  def smell31 = IO.sleep(1.second) *> IO(42)
-  
-  // timeout: .race(IO.sleep(d)) -> .timeout(d)
-  def smell32 = IO(42).race(IO.sleep(1.second))
-  
-  // bracket: flatMap { a => use(a).guarantee(release(a)) } -> bracket
-  def smell33 = IO(42).flatMap { a =>
-    IO(println(s"using $a")).guarantee(IO(println("cleanup")))
-  }
+  // delay_by: IO.sleep(d) *> effect -> effect.delayBy(d)
+  def smell28 = IO.sleep(1.second) *> IO(42)
 
   // ============================================================================
-  // Monadic Operations (6 patterns)
+  // Monadic Operations (1 pattern)
   // ============================================================================
 
   // if_m: fb.flatMap(b => if (b) fa else fc) -> fb.ifM(fa, fc)
-  def smell34 = IO(true).flatMap(b => if (b) IO("yes") else IO("no"))
+  def smell29 = IO(true).flatMap(b => if (b) IO("yes") else IO("no"))
 
   // ============================================================================
   // Additional Patterns
   // ============================================================================
 
   // map_n: for-comprehension with constructor yield -> .mapN
-  def smell35 = for {
+  def smell30 = for {
     a <- IO(1)
     b <- IO(2)
   } yield (a, b)
