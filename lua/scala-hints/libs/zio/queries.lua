@@ -357,7 +357,7 @@ return {
 
   -- x.zipRight(v) ~> x *> v
   zip_right_operator = {
-    diagnostic_severity = 'OFF',
+    diagnostic_severity = 'HINT',
     query = parse_query([[
 (call_expression
   function: (field_expression
@@ -402,7 +402,7 @@ return {
 
   -- x.tap(_ => v) ~> x <* v / x.zipLeft(v)
   zip_left_value = {
-    diagnostic_severity = 'OFF',
+    diagnostic_severity = 'HINT',
     query = parse_query([[
 (call_expression
   function: (field_expression
