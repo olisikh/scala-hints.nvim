@@ -231,7 +231,7 @@ return {
       local op = matches[2][1]
       local finish = matches[5][1]
 
-      local _, _, start_row, start_col = op:range()
+      local start_row, start_col, _, _ = op:range()
       local dstart_row, dstart_col, end_row, end_col = finish:range()
 
       local replaced = utils.get_node_text(bufnr, finish)
@@ -325,7 +325,7 @@ return {
       local value = matches[6][1]
       local finish = matches[7][1]
 
-      local _, _, start_row, start_col = op:range()
+      local start_row, start_col, _, _ = op:range()
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
@@ -376,6 +376,9 @@ return {
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
+      -- Adjust start_col to include the '.' before 'zipRight'
+      local action_start_col = dstart_col - 1
+
       return {
         ready = {},
         pending = {
@@ -389,7 +392,7 @@ return {
               local value_text = utils.get_node_text(bufnr, value)
               done({
                 diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
-                action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
+                action = { start_row = dstart_row, start_col = action_start_col, end_row = end_row, end_col = end_col },
                 replacement = ' *> ' .. value_text,
                 title = 'ZIO: replace .zipRight(' .. value_text .. ') with *> ' .. value_text,
               })
@@ -803,6 +806,18 @@ return {
       local target = matches[2][1]
       local value = matches[3][1]
       local finish = matches[4][1]
+
+      -- Skip if the body is a block that returns the parameter (tap_error pattern)
+      if value:type() == 'block' or value:type() == 'indented_block' then
+        local child_count = value:named_child_count()
+        if child_count >= 1 then
+          local last_child = value:named_child(child_count - 1)
+          if last_child:type() == 'identifier' then
+            -- This is likely a tap_error pattern, skip
+            return { ready = {}, pending = {} }
+          end
+        end
+      end
 
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
@@ -1318,11 +1333,12 @@ return {
       local _, _, end_row, end_col = finish:range()
 
       local duration_text = utils.get_node_text(bufnr, duration)
+      local effect_text = utils.get_node_text(bufnr, effect)
 
       local item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
         action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-        replacement = '.delay(' .. duration_text .. ')',
+        replacement = effect_text .. '.delay(' .. duration_text .. ')',
         title = 'ZIO: replace ZIO.sleep(' .. duration_text .. ') *> effect with effect.delay(' .. duration_text .. ')',
       }
 
