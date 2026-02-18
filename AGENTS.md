@@ -39,7 +39,7 @@
 | `libs/zio/init.lua` | ZIO library module (name + queries table) |
 | `libs/cats-effect/queries.lua` | All 36 Cats-Effect query definitions and handlers |
 | `libs/cats-effect/init.lua` | Cats-Effect library module (name + queries table) |
-| `libs/cats/queries.lua` | All 6 Cats tagless-final query definitions and handlers |
+| `libs/cats/queries.lua` | All 15 Cats tagless-final query definitions and handlers |
 | `libs/cats/init.lua` | Cats tagless-final library module (name + queries table) |
 | `cats/evidence.lua` | Typeclass evidence detector for tagless-final F[_] patterns |
 | `semantic.lua` | LSP type definition verification, caching, and `type_definition_predicate` |
@@ -106,7 +106,7 @@ Examples and motivation live in the tests under `tests/cats_effect/`.
 
 ### Cats Tagless-Final Patterns (F[_])
 
-6 Cats tagless-final patterns implemented in [libs/cats/queries.lua](lua/scala-hints/libs/cats/queries.lua).
+15 Cats tagless-final patterns implemented in [libs/cats/queries.lua](lua/scala-hints/libs/cats/queries.lua).
 These patterns match generic `F[_]` code and are gated by typeclass evidence (context bounds, implicit/using params) in the enclosing `def`.
 
 | Pattern | Detection | Replacement | Required Evidence |
@@ -114,9 +114,18 @@ These patterns match generic `F[_]` code and are gated by typeclass evidence (co
 | `map_unit` | `fa.map(_ => ())` | `fa.void` | Functor |
 | `map_value` | `fa.map(_ => v)` | `fa.as(v)` | Functor |
 | `flat_map_value` | `fa.flatMap(_ => fb)` | `fa *> fb` | Apply |
+| `product_l` | `fa.flatMap(a => fb.as(a))` | `fa <* fb` | Apply |
+| `flat_tap` | `fa.flatMap(a => effect.as(a))` | `fa.flatTap(a => effect)` | FlatMap |
 | `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` | Applicative |
+| `unless_a` | `if (!cond) fa else F.unit` | `fa.unlessA(cond)` | Applicative |
 | `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` | Monad |
 | `handle_error` | `fa.attempt.flatMap { case Right(a) => F.pure(a); case Left(e) => F.pure(default) }` | `fa.handleError(_ => default)` | MonadError |
+| `raise_when` | `if (cond) F.raiseError(err) else F.unit` | `F.raiseWhen(cond)(err)` | MonadError |
+| `raise_unless` | `if (!cond) F.raiseError(err) else F.unit` | `F.raiseUnless(cond)(err)` | MonadError |
+| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt)(err)` | MonadError |
+| `from_either` | `either.fold(F.raiseError, F.pure)` | `F.fromEither(either)` | MonadError |
+| `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` | MonadError |
+| `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` | MonadError |
 
 **Evidence Detection**: The `cats/evidence.lua` module parses the nearest enclosing `def` header for:
 - Context bounds: `[F[_]: Sync]`

@@ -4,7 +4,7 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ## Features
 
-- **ZIO (35) + Cats-Effect (36) + Cats tagless-final (6) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
+- **ZIO (35) + Cats-Effect (36) + Cats tagless-final (15) Treesitter patterns** detecting common effect code smells with idiomatic replacements (e.g. `.map(_ => ())` → `.unit`/`.void`)
 - **Native diagnostics & code actions** — hooks `vim.diagnostic.set()` and the LSP code-action handler
 - **Metals-aware** — type definition verification ensures replacements only apply to actual ZIO or Cats-Effect types
 - **Evidence-gated** — Cats tagless-final patterns verify typeclass evidence (Functor/Monad/etc.) in the enclosing `def` signature
@@ -97,7 +97,7 @@ Cats-Effect hints cover common IO/Resource idioms and include:
 
 Full details and handler descriptions are in [AGENTS.md](AGENTS.md).
 
-### Cats Tagless-Final (F[_], 6 patterns)
+### Cats Tagless-Final (F[_], 15 patterns)
 
 Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (context bounds / implicit / using) in the enclosing `def`:
 
@@ -106,9 +106,18 @@ Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (c
 | `map_unit` | `fa.map(_ => ())` | `fa.void` | Functor |
 | `map_value` | `fa.map(_ => v)` | `fa.as(v)` | Functor |
 | `flat_map_value` | `fa.flatMap(_ => fb)` | `fa *> fb` | Apply |
+| `product_l` | `fa.flatMap(a => fb.as(a))` | `fa <* fb` | Apply |
+| `flat_tap` | `fa.flatMap(a => effect.as(a))` | `fa.flatTap(a => effect)` | FlatMap |
 | `when_a` | `if (cond) fa else F.unit` | `fa.whenA(cond)` | Applicative |
+| `unless_a` | `if (!cond) fa else F.unit` | `fa.unlessA(cond)` | Applicative |
 | `if_m` | `fb.flatMap(b => if (b) fa else fc)` | `fb.ifM(fa, fc)` | Monad |
 | `handle_error` | `.attempt.flatMap { case Right/Left ... }` | `.handleError` | MonadError |
+| `raise_when` | `if (cond) F.raiseError(err) else F.unit` | `F.raiseWhen(cond)(err)` | MonadError |
+| `raise_unless` | `if (!cond) F.raiseError(err) else F.unit` | `F.raiseUnless(cond)(err)` | MonadError |
+| `from_option` | `opt.fold(F.raiseError(err))(F.pure)` | `F.fromOption(opt)(err)` | MonadError |
+| `from_either` | `either.fold(F.raiseError, F.pure)` | `F.fromEither(either)` | MonadError |
+| `redeem` | `.attempt.map { case Right/Left ... }` | `.redeem(...)` | MonadError |
+| `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` | MonadError |
 
 ## Architecture
 
@@ -137,7 +146,7 @@ Evidence-gated patterns for generic `F[_]` code, requiring typeclass evidence (c
 | `libs/cats-effect/init.lua` | Cats-Effect library registry module |
 | `libs/cats-effect/queries.lua` | All 36 Cats-Effect Treesitter query definitions and handlers |
 | `libs/cats/init.lua` | Cats tagless-final library registry module |
-| `libs/cats/queries.lua` | All 6 Cats tagless-final Treesitter query definitions and handlers |
+| `libs/cats/queries.lua` | All 15 Cats tagless-final Treesitter query definitions and handlers |
 | `cats/evidence.lua` | Typeclass evidence detector for F[_] patterns |
 | `semantic.lua` | LSP type definition verification and caching |
 | `utils.lua` | Async helpers, node inspection, Metals readiness polling |

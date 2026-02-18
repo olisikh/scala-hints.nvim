@@ -4,7 +4,7 @@
 
 - ZIO: 35 patterns (low/medium parity). See `AGENTS.md` for the pattern catalog.
 - Cats-Effect (IO/Resource): 36 patterns implemented. See `AGENTS.md`.
-- Cats tagless-final (F[_]): 6 evidence-gated patterns (void, as, *>, whenA, ifM, handleError). See `AGENTS.md`.
+- Cats tagless-final (F[_]): 15 evidence-gated patterns (void, as, *>, <* , flatTap, whenA, unlessA, ifM, handleError, raiseWhen, raiseUnless, fromOption, fromEither, redeem, redeemWith). See `AGENTS.md`.
 
 ## Future Work
 
@@ -26,10 +26,8 @@
 - Suggest `flatten` or appropriate combinator
 
 ### Cats Tagless-Final — Additional Patterns 🟡
-- 6 initial patterns implemented (`void`, `as`, `*>`, `whenA`, `ifM`, `handleError`).
-- Remaining candidate patterns: `unlessA`, `raiseWhen` / `raiseUnless`, `fromOption` / `fromEither` / `fromTry`,
-  `handleErrorWith`, `redeem` / `redeemWith`, `flatTap`, `delayBy`, `timeout` / `timeoutTo`,
-  `tupled` / `parTupled`, `parTraverse`, `replicateA_`, `foreverM`.
+- 15 patterns implemented (`void`, `as`, `*>`, `<*`, `flatTap`, `whenA`, `unlessA`, `ifM`, `handleError`, `raiseWhen`, `raiseUnless`, `fromOption`, `fromEither`, `redeem`, `redeemWith`).
+- Remaining candidate patterns: `delayBy`, `timeout` / `timeoutTo`, `tupled` / `parTupled`, `parTraverse`, `replicateA_`, `foreverM`.
 - May require expanding the capability lattice with `Temporal`, `Parallel`, etc.
 
 ## Known Limitations
