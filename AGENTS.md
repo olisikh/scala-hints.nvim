@@ -201,7 +201,53 @@ Cats-Effect (IO/Resource) patterns are implemented under `lua/scala-hints/libs/c
 )
 ```
 
-## 7. References
+## 7. Test Project
+
+A minimal Scala 3 SBT project is available at `test-project/` for manual verification of all patterns. It contains intentional code smells that trigger each pattern.
+
+### Structure
+
+```
+test-project/
+├── build.sbt                    # Scala 3 + ZIO + Cats-Effect dependencies
+├── project/build.properties     # sbt version
+├── README.md                    # Setup and usage instructions
+└── src/main/scala/smells/
+    ├── ZioSmells.scala          # 35 ZIO patterns
+    ├── CatsEffectSmells.scala   # 40 Cats-Effect patterns
+    └── CatsTaglessSmells.scala  # 15 Cats tagless-final patterns
+```
+
+### Usage
+
+1. Open a smells file in Neovim with Metals running
+2. Wait for diagnostics to appear
+3. Use `:lua vim.lsp.buf.code_action()` to see suggested fixes
+
+### Adding New Smells
+
+When implementing a new pattern, add a corresponding smell to the test project:
+
+1. **Identify the target file**:
+   - ZIO → `test-project/src/main/scala/smells/ZioSmells.scala`
+   - Cats-Effect → `test-project/src/main/scala/smells/CatsEffectSmells.scala`
+   - Cats tagless-final → `test-project/src/main/scala/smells/CatsTaglessSmells.scala`
+
+2. **Add the smell** following the existing format:
+   ```scala
+   // pattern_name: detection code -> replacement
+   def smellN = /* code that triggers the pattern */
+   ```
+
+3. **For Cats tagless-final**, include the required typeclass evidence:
+   ```scala
+   def smellN[F[_]: Monad](fa: F[Int]): F[String] =
+     fa.flatMap(b => if (b) F.pure("yes") else F.pure("no"))
+   ```
+
+4. **Verify** by opening the file in Neovim and checking that the diagnostic appears.
+
+## 8. References
 
 - [ZIO Documentation](https://zio.dev/)
 - [IntelliJ ZIO Plugin](https://github.com/zio/zio-intellij)
