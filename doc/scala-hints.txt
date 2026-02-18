@@ -1,0 +1,126 @@
+*scala-hints.txt*  Opinionated diagnostics + code actions for Scala effect libraries
+
+===============================================================================
+INTRODUCTION                                              *scala-hints*
+
+scala-hints.nvim provides Neovim diagnostics and quickfix code actions for
+Scala effect libraries using Treesitter for AST matching and Metals LSP for
+type verification.
+
+Supported libraries:
+  - ZIO (35 patterns)
+  - Cats-Effect IO/Resource (40 patterns)
+  - Cats tagless-final F[_] (15 patterns)
+
+===============================================================================
+REQUIREMENTS                                            *scala-hints-requirements*
+
+- Neovim 0.11+
+- nvim-metals (https://github.com/scalameta/nvim-metals)
+- plenary.nvim (https://github.com/nvim-lua/plenary.nvim)
+- nvim-treesitter with scala parser
+
+===============================================================================
+SETUP                                                    *scala-hints-setup*
+
+Minimal setup: >
+
+  require('scala-hints').setup()
+
+<
+
+The plugin automatically listens for LspAttach events and runs on Scala
+buffers when Metals is connected.
+
+===============================================================================
+CONFIGURATION                                          *scala-hints-config*
+
+Setup accepts the following options: >
+
+  require('scala-hints').setup({
+    -- Logging
+    logging = {
+      enabled = true,    -- boolean (default: true)
+      level = 'INFO',    -- 'debug'|'info'|'warn'|'error'
+    },
+
+    -- Type definition verification
+    type_definition = {
+      timeouts_ms = { 400, 1000, 2000 },  -- retry schedule (ms)
+      max_inflight = 4,                    -- max concurrent requests
+    },
+
+    -- Diagnostics
+    diagnostics = {
+      default_severity = 'HINT',           -- 'HINT'|'INFO'|'WARN'|'ERROR'|'OFF'
+      overrides = {
+        ['zio/zip_left_value'] = 'OFF',    -- disable specific pattern
+        ['zio/zio_die'] = 'WARN',          -- elevate specific pattern
+      },
+      excluded_libs = {},                  -- { "zio", "cats-effect", "cats" }
+    },
+
+    -- Code actions
+    actions = {
+      excluded_libs = {},
+    },
+  })
+
+<
+
+Severity levels: HINT (default), INFO, WARN, ERROR, OFF (disabled)
+
+Pattern names format: "<lib>/<pattern>" (e.g., 'zio/map_unit', 'cats-effect/println')
+
+===============================================================================
+COMMANDS                                                *scala-hints-commands*
+
+:ScalaHintsApplyBuffer                          *:ScalaHintsApplyBuffer*
+  Apply all available scala-hints fixes in the current buffer.
+  Overlapping fixes are skipped to prevent broken code.
+  Run again after re-analysis to apply remaining fixes.
+
+===============================================================================
+TROUBLESHOOTING                                        *scala-hints-troubleshooting*
+
+No diagnostics appearing?
+  - Ensure Metals has fully initialized (wait for 'MetalsReady')
+  - Check ':LspInfo' shows Metals is attached
+  - Try saving the buffer to trigger diagnostics refresh
+
+Diagnostics disappear after undo?
+  - Reopen the buffer or save to refresh
+
+Missing patterns?
+  - Some patterns require Metals type definition (ZIO/Cats-Effect)
+  - Without Metals, only tagless-final patterns will appear
+
+===============================================================================
+PATTERNS                                                *scala-hints-patterns*
+
+Quick examples (see wiki for full catalog):
+
+  ZIO:
+    ZIO.succeed(())        -> ZIO.unit
+    .map(_ => ())          -> .unit
+    .catchAll(_ => ZIO.unit) -> .ignore
+
+  Cats-Effect:
+    IO(println(x))         -> IO.println(x)
+    io.map(_ => ())        -> io.void
+
+  Cats Tagless-Final:
+    fa.map(_ => ())        -> fa.void    (requires Functor evidence)
+
+Full pattern catalog: https://github.com/olisikh/scala-hints.nvim/wiki/Patterns
+
+===============================================================================
+LINKS                                                    *scala-hints-links*
+
+- GitHub: https://github.com/olisikh/scala-hints.nvim
+- Wiki: https://github.com/olisikh/scala-hints.nvim/wiki
+- ZIO Docs: https://zio.dev/
+- Cats-Effect Docs: https://typelevel.org/cats-effect/
+
+===============================================================================
+ vim:tw=78:ts=8:ft=help:norl:

@@ -3,7 +3,7 @@ name: Sync Wiki
 on:
   push:
     branches: [main]
-    paths: ['docs/**']
+    paths: ['wiki/**']
   workflow_dispatch:
 
 permissions:
@@ -16,18 +16,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Sync docs to wiki
+      - name: Sync wiki
         run: |
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git gh-wiki
 
-          cd wiki
+          cd gh-wiki
 
           git config --global --add safe.directory "$(pwd)"
           git config user.name "Oleksii Lisikh"
           git config user.email "alisiikh@gmail.com"
 
           rm -rf *
-          cp -r ../docs/* .
+          cp -r ../wiki/* .
 
           git add .
           git commit -m "action: wiki sync" || echo "No changes to commit"

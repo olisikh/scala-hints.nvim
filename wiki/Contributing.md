@@ -28,11 +28,17 @@ make test
 Run specific test categories:
 
 ```bash
-# ZIO query tests only
-make test-pure
+# ZIO query tests
+make test-zio
 
-# Query engine tests
-make test-engine
+# Cats-Effect query tests
+make test-cats-effect
+
+# Cats tagless-final query tests
+make test-cats
+
+# All library query tests
+make test-libs
 ```
 
 Or run individual test files:
