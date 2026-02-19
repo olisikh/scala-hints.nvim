@@ -2,6 +2,12 @@
 
 Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code.
 
+## Demo
+
+<video src="https://github.com/olisikh/scala-hints.nvim/raw/main/media/demo.mov" controls="controls" style="max-width: 100%;"></video>
+
+*The video shows diagnostics appearing and being applied via code actions.*
+
 ## Features
 
 - **90 Treesitter patterns** detecting common effect code smells with idiomatic replacements
