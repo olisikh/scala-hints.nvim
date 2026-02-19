@@ -72,6 +72,13 @@ See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configur
 
 Full documentation is available on the [Wiki](https://github.com/olisikh/scala-hints.nvim/wiki):
 
+- [Installation](https://github.com/olisikh/scala-hints.nvim/wiki/1.-Installation) — setup instructions
+- [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configuration) — all options
+- [Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns) — all 90 patterns with detection rules
+- [ZIO](https://github.com/olisikh/scala-hints.nvim/wiki/4.-ZIO) — deep dive into ZIO patterns (35)
+- [Cats-Effect](https://github.com/olisikh/scala-hints.nvim/wiki/5.-Cats-Effect) — IO/Resource patterns (40)
+- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/6.-Cats-Tagless-Final) — F[_] patterns (15)
+
 ## Troubleshooting
 
 - **No diagnostics?** Wait for Metals to initialize (`MetalsReady` / `MetalsInitialized`)
