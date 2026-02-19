@@ -60,16 +60,17 @@ require('scala-hints').setup({
 })
 ```
 
-See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/Configuration) for all options.
+See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configuration) for all options.
 
 ## Documentation
 
 Full documentation is available on the [Wiki](https://github.com/olisikh/scala-hints.nvim/wiki):
 
-- [Pattern Catalog](https://github.com/olisikh/scala-hints.nvim/wiki/Patterns) — all 90 patterns with detection rules
-- [ZIO Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/ZIO) — deep dive into ZIO patterns
-- [Cats-Effect Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Effect) — IO/Resource patterns
-- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Tagless-Final) — evidence-gated F[_] patterns
+- [Installation](https://github.com/olisikh/scala-hints.nvim/wiki/1.-Installation) — setup instructions
+- [Pattern Catalog](https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns) — all 90 patterns with detection rules
+- [ZIO Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/Supported-Libraries/ZIO) — deep dive into ZIO patterns
+- [Cats-Effect Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/Supported-Libraries/Cats-Effect) — IO/Resource patterns
+- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/Supported-Libraries/Cats-Tagless-Final) — evidence-gated F[_] patterns
 
 ## Troubleshooting
 

@@ -23,7 +23,7 @@ REQUIREMENTS                                            *scala-hints-requirement
 ===============================================================================
 SETUP                                                    *scala-hints-setup*
 
-Minimal setup: >
+Minimal setup: >lua
 
   require('scala-hints').setup()
 
@@ -35,18 +35,18 @@ buffers when Metals is connected.
 ===============================================================================
 CONFIGURATION                                          *scala-hints-config*
 
-Setup accepts the following options: >
+Setup accepts the following options: >lua
 
   require('scala-hints').setup({
     -- Logging
     logging = {
-      enabled = true,    -- boolean (default: true)
-      level = 'INFO',    -- 'debug'|'info'|'warn'|'error'
+      enabled = true,                      -- boolean (default: true)
+      level = 'INFO',                      -- 'debug'|'info'|'warn'|'error'
     },
 
     -- Type definition verification
     type_definition = {
-      timeouts_ms = { 400, 1000, 2000 },  -- retry schedule (ms)
+      timeouts_ms = { 400, 1000, 2000 },   -- retry schedule (ms)
       max_inflight = 4,                    -- max concurrent requests
     },
 
@@ -100,19 +100,21 @@ PATTERNS                                                *scala-hints-patterns*
 
 Quick examples (see wiki for full catalog):
 
-  ZIO:
-    ZIO.succeed(())        -> ZIO.unit
-    .map(_ => ())          -> .unit
+  ZIO: >scala
+    ZIO.succeed(())          -> ZIO.unit
+    .map(_ => ())            -> .unit
     .catchAll(_ => ZIO.unit) -> .ignore
+<
 
-  Cats-Effect:
-    IO(println(x))         -> IO.println(x)
-    io.map(_ => ())        -> io.void
+  Cats-Effect: >scala
+    IO(println(x))           -> IO.println(x)
+    io.map(_ => ())          -> io.void
+<
 
-  Cats Tagless-Final:
-    fa.map(_ => ())        -> fa.void    (requires Functor evidence)
+  Cats Tagless-Final: >scala
+    fa.map(_ => ())          -> fa.void
 
-Full pattern catalog: https://github.com/olisikh/scala-hints.nvim/wiki/Patterns
+Full pattern catalog: https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns
 
 ===============================================================================
 LINKS                                                    *scala-hints-links*
