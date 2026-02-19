@@ -4,9 +4,7 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ## Demo
 
-<video src="https://github.com/olisikh/scala-hints.nvim/raw/main/media/demo.mp4" controls="controls" style="max-width: 100%;"></video>
-
-*The video shows diagnostics appearing and being applied via code actions.*
+![Demo](media/demo.gif)
 
 ## Features
 
