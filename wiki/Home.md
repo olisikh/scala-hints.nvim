@@ -7,9 +7,9 @@ Welcome to the scala-hints.nvim documentation.
 - [[1. Installation|Installation]] — Setup with lazy.nvim, packer, or manual
 - [[2. Configuration|Configuration]] — All options and per-pattern customization
 - [[3. Patterns|Patterns]] — Complete pattern catalog (90 patterns)
-- [[Supported Libraries/ZIO|ZIO]] — ZIO 2.x patterns (35 patterns)
-- [[Supported Libraries/Cats-Effect|Cats-Effect]] — IO/Resource patterns (40 patterns)
-- [[Supported Libraries/Cats-Tagless-Final|Cats-Tagless-Final]] — Evidence-gated F[_] patterns (15 patterns)
+- [[ZIO]] — ZIO 2.x patterns (35 patterns)
+- [[Cats-Effect]] — IO/Resource patterns (40 patterns)
+- [[Cats-Tagless-Final]] — Evidence-gated F[_] patterns (15 patterns)
 - [[Contributing]] — How to add new patterns
 
 ## What This Plugin Does
