@@ -2,6 +2,12 @@
 
 Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code.
 
+## Demo
+
+<video src="https://github.com/olisikh/scala-hints.nvim/raw/main/media/demo.mp4" controls="controls" style="max-width: 100%;"></video>
+
+*The video shows diagnostics appearing and being applied via code actions.*
+
 ## Features
 
 - **90 Treesitter patterns** detecting common effect code smells with idiomatic replacements
@@ -60,16 +66,18 @@ require('scala-hints').setup({
 })
 ```
 
-See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/Configuration) for all options.
+See [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configuration) for all options.
 
 ## Documentation
 
 Full documentation is available on the [Wiki](https://github.com/olisikh/scala-hints.nvim/wiki):
 
-- [Pattern Catalog](https://github.com/olisikh/scala-hints.nvim/wiki/Patterns) — all 90 patterns with detection rules
-- [ZIO Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/ZIO) — deep dive into ZIO patterns
-- [Cats-Effect Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Effect) — IO/Resource patterns
-- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/Cats-Tagless-Final) — evidence-gated F[_] patterns
+- [Installation](https://github.com/olisikh/scala-hints.nvim/wiki/1.-Installation) — setup instructions
+- [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configuration) — all options
+- [Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns) — all 90 patterns with detection rules
+- [ZIO](https://github.com/olisikh/scala-hints.nvim/wiki/4.-ZIO) — deep dive into ZIO patterns (35)
+- [Cats-Effect](https://github.com/olisikh/scala-hints.nvim/wiki/5.-Cats-Effect) — IO/Resource patterns (40)
+- [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/6.-Cats-Tagless-Final) — F[_] patterns (15)
 
 ## Troubleshooting
 
