@@ -50,7 +50,7 @@ function M.run(bufnr, opts)
   local all_diagnostics = vim.diagnostic.get(bufnr)
   local scala_hints_diagnostics = {}
   for _, diag in ipairs(all_diagnostics) do
-    if diag.source == constants.plugin_name then
+    if diag.source == constants.name then
       table.insert(scala_hints_diagnostics, diag)
     end
   end

@@ -15,12 +15,6 @@ local supported_libs = {
   'cats-effect',
 }
 
-local levels = {
-  ERROR = vim.log.levels.ERROR,
-  WARN = vim.log.levels.WARN,
-  INFO = vim.log.levels.INFO,
-}
-
 --- Cached merged query table: { "lib/query_name" -> query_def }
 local _all_queries = nil
 

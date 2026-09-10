@@ -1,5 +1,5 @@
 local constants = require('scala-hints.constants')
-local log_dir = '/tmp/' .. constants.client_name .. '/log'
+local log_dir = '/tmp/' .. constants.name .. '/log'
 local dir_initialized = false
 
 local LEVELS = {
@@ -95,7 +95,7 @@ end
 
 local function make_logger(name)
   local meta = {}
-  local logger_name = name or constants.plugin_name
+  local logger_name = name or constants.name
 
   local function log(level_info)
     return function(message, opts)
