@@ -363,6 +363,32 @@ describe('Monix queries with type definition verification', function()
       })
     end)
 
+    it('type-checks the returned expression of multiline case bodies', function()
+      local semantic = require('scala-hints.semantic')
+      local orig = semantic.type_definition_predicate
+      semantic.type_definition_predicate = function(b, node, _pred, cb)
+        local text = utils_node_text(node, b)
+        cb(text == 'Task(1)' or text == 'next' or text == 'fallback')
+      end
+      local source = [[val x = Task(1).attempt.map {
+  case Right(v) =>
+    val next = Task.now(v)
+    next
+  case Left(e) =>
+    val fallback = Task.raiseError(e)
+    fallback
+}]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.redeem)
+      local results = H.resolve_pending(pending)
+      semantic.type_definition_predicate = orig
+
+      assert.are.equal(1, #results)
+      assert.is_truthy(results[1].replacement:find('^%.redeemWith%('))
+      assert.is_truthy(results[1].title:find('%.redeemWith$'))
+    end)
+
     it('chooses redeemWith when a case body returns a Task', function()
       local source = [[val x = Task(1).attempt.map {
   case Right(v) => Task.now(v)

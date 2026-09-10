@@ -88,6 +88,25 @@ local function unwrap_single_expression_node(node)
   return node
 end
 
+--- Return the expression that determines a node's value. Blocks evaluate to
+--- their final named child, so typeDefinition must target that child instead
+--- of the block itself.
+local function final_expression_node(node)
+  if not node then
+    return nil
+  end
+
+  local node_type = node:type()
+  if node_type == 'block' or node_type == 'indented_block' then
+    local count = node:named_child_count()
+    if count > 0 then
+      return final_expression_node(node:named_child(count - 1))
+    end
+  end
+
+  return node
+end
+
 local function is_task_unit_text(text)
   return vim.trim(text) == 'Task.unit'
 end
@@ -165,9 +184,9 @@ local function extract_case_map(bufnr, match_node)
       param = '_'
     end
     if ctor and body then
-      -- The body expression is the last named child of the case clause;
-      -- keep the node so handlers can type-check it via Metals.
-      local body_node = case_node:named_child(case_node:named_child_count() - 1)
+      -- Type-check the expression returned by the case body, not its
+      -- enclosing block, so Metals can resolve the actual result type.
+      local body_node = final_expression_node(case_node:named_child(case_node:named_child_count() - 1))
       case_map[ctor] = { param = param, body = vim.trim(body), body_node = body_node }
     end
   end
