@@ -119,7 +119,7 @@ refresh_diagnostics = function(bufnr, dispatchers)
         },
         message = diag.message or '',
         severity = diag.severity or vim.diagnostic.severity.HINT,
-        source = diag.source or constants.plugin_name,
+        source = diag.source or constants.name,
       })
     end
 
@@ -167,7 +167,7 @@ function M.rpc_start(dispatchers)
       send({
         capabilities = server_capabilities,
         serverInfo = {
-          name = constants.client_name,
+          name = constants.name,
           version = '0.1.0',
         },
       })
@@ -363,7 +363,7 @@ function M.start(bufnr)
   logger.info('Starting in-process LSP client')
 
   client_id = lsp.start({
-    name = constants.client_name,
+    name = constants.name,
     cmd = M.rpc_start,
     filetypes = { 'scala' },
     root_dir = vim.fn.getcwd(),

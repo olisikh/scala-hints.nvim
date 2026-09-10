@@ -5,7 +5,7 @@
 ---   handler = function(bufnr, matches) -> results table
 
 local utils = require('scala-hints.utils')
-local evidence = require('scala-hints.cats.evidence')
+local evidence = require('scala-hints.libs.cats.evidence')
 local ts = vim.treesitter
 
 local function parse_query(query)
