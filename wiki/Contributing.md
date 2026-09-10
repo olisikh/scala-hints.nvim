@@ -168,7 +168,7 @@ end
 For Cats tagless-final patterns, use `cats/evidence.has_capability` to verify typeclass evidence:
 
 ```lua
-local evidence = require("scala-hints.cats.evidence")
+local evidence = require('scala-hints.libs.cats.evidence')
 
 handler = function(bufnr, root, match)
   local node = match.node

@@ -5,7 +5,7 @@ local libs = require('scala-hints.libs')
 local constants = require('scala-hints.constants')
 local logger = require('scala-hints.logger').new('diagnostics')
 
-local source = constants.plugin_name
+local source = constants.name
 
 local M = {}
 
