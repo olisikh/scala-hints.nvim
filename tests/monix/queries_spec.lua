@@ -4,6 +4,14 @@
 local H = require('tests.helpers')
 local queries = require('scala-hints.libs.monix.queries')
 
+--- Text of a TSNode (or nil) for node-aware predicate mocks.
+local function utils_node_text(node, bufnr)
+  if not node then
+    return nil
+  end
+  return vim.treesitter.get_node_text(node, bufnr or 0)
+end
+
 describe('Monix queries with type definition verification', function()
   local bufnr
   local root
@@ -248,6 +256,14 @@ describe('Monix queries with type definition verification', function()
   ---------------------------------------------------------------------------
   describe('redeem', function()
     it('matches .attempt.map { Right/Left } and suggests .redeem', function()
+      -- Node-aware mock: only the receiver (Task(1)) is a Monix Task;
+      -- the case bodies (v + 1, 0) are plain values, so .redeem applies.
+      local semantic = require('scala-hints.semantic')
+      local orig = semantic.type_definition_predicate
+      semantic.type_definition_predicate = function(b, node, _pred, cb)
+        local text = utils_node_text(node, b)
+        cb(text == 'Task(1)')
+      end
       local source = [[val x = Task(1).attempt.map {
   case Right(v) => v + 1
   case Left(e) => 0
@@ -255,6 +271,7 @@ describe('Monix queries with type definition verification', function()
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      semantic.type_definition_predicate = orig
 
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
@@ -276,6 +293,7 @@ describe('Monix queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       assert.is_truthy(results[1].replacement:find('^%.redeemWith%('))
+      assert.is_truthy(results[1].title:find('%.redeemWith$'))
     end)
 
     it('does not match attempt.map with only one case', function()

@@ -135,6 +135,15 @@ local function get_task_raise_error_arg(bufnr, node)
   return utils.get_node_text(bufnr, err_node)
 end
 
+--- Return a copy of the item with the redeem replacement/title rewritten to
+--- use the given method ('redeem' or 'redeemWith').
+local function with_redeem_method(item, method)
+  local copy = vim.deepcopy(item)
+  copy.replacement = copy.replacement:gsub('^%.redeem', '.' .. method)
+  copy.title = copy.title:gsub('%.redeem$', '.' .. method)
+  return copy
+end
+
 local function collect_case_clauses(node, out)
   out = out or {}
   if not node then
@@ -161,7 +170,10 @@ local function extract_case_map(bufnr, match_node)
       param = '_'
     end
     if ctor and body then
-      case_map[ctor] = { param = param, body = vim.trim(body) }
+      -- The body expression is the last named child of the case clause;
+      -- keep the node so handlers can type-check it via Metals.
+      local body_node = case_node:named_child(case_node:named_child_count() - 1)
+      case_map[ctor] = { param = param, body = vim.trim(body), body_node = body_node }
     end
   end
   return case_map
@@ -521,8 +533,10 @@ return {
       end
       local body_text = table.concat(body_parts, '; ')
 
-      -- First body expression must be a Monix Task for .tapEval to be valid
-      local first_body_expr = body_block:named_child(0)
+      -- The lambda body passed to .tapEval evaluates to its LAST
+      -- expression, so that expression (not the first) must be a Monix
+      -- Task for the replacement to typecheck.
+      local last_body_expr = body_block:named_child(child_count - 2)
 
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
@@ -540,7 +554,7 @@ return {
                 done(nil)
                 return
               end
-              semantic.type_definition_predicate(bufnr, first_body_expr, is_monix_task_type, function(body_is_task)
+              semantic.type_definition_predicate(bufnr, last_body_expr, is_monix_task_type, function(body_is_task)
                 if body_is_task then
                   done(item)
                 else
@@ -653,21 +667,16 @@ return {
       local left_fn = left.param .. ' => ' .. left.body
       local right_fn = right.param .. ' => ' .. right.body
 
-      local method = 'redeem'
-      if string.find(left.body, 'Task%.') or string.find(right.body, 'Task%.') then
-        method = 'redeemWith'
-      end
-
       -- Start range at ".attempt" to remove it (the dot before attempt)
       local dstart_row, dstart_col, _, _ = attempt_id:range()
       dstart_col = math.max(0, dstart_col - 1)
       local _, _, end_row, end_col = finish:range()
 
-      local item = {
+      local redeem_item = {
         diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
         action = { start_row = dstart_row, start_col = dstart_col, end_row = end_row, end_col = end_col },
-        replacement = '.' .. method .. '(' .. left_fn .. ', ' .. right_fn .. ')',
-        title = 'Monix: replace .attempt.map with .' .. method,
+        replacement = '.redeem(' .. left_fn .. ', ' .. right_fn .. ')',
+        title = 'Monix: replace .attempt.map with .redeem',
       }
 
       return {
@@ -675,11 +684,26 @@ return {
         pending = {
           function(done)
             semantic.type_definition_predicate(bufnr, verify_target, is_monix_task_type, function(is_task)
-              if is_task then
-                done(item)
-              else
+              if not is_task then
                 done(nil)
+                return
               end
+              -- Decide redeem vs redeemWith by the actual type of the case
+              -- bodies: if either body evaluates to a Monix Task, the
+              -- functions return Task[...] and redeemWith is required.
+              semantic.type_definition_predicate(bufnr, left.body_node, is_monix_task_type, function(left_is_task)
+                if left_is_task then
+                  done(with_redeem_method(redeem_item, 'redeemWith'))
+                  return
+                end
+                semantic.type_definition_predicate(bufnr, right.body_node, is_monix_task_type, function(right_is_task)
+                  if right_is_task then
+                    done(with_redeem_method(redeem_item, 'redeemWith'))
+                  else
+                    done(redeem_item)
+                  end
+                end)
+              end)
             end)
           end,
         },
