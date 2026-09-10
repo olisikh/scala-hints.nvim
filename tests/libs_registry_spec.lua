@@ -22,7 +22,7 @@ describe('libs registry', function()
       -- Every key must start with a registered lib prefix
       for key, _ in pairs(all) do
         assert.is_truthy(
-          key:match('^zio/') or key:match('^cats/') or key:match('^cats%-effect/'),
+          key:match('^zio/') or key:match('^cats/') or key:match('^cats%-effect/') or key:match('^monix/'),
           'Expected key to start with a lib prefix, got: ' .. key
         )
       end
@@ -110,6 +110,39 @@ describe('libs registry', function()
         'cats/when_a',
         'cats/if_m',
         'cats/handle_error',
+      }
+      local all = libs.get_all_queries()
+      for _, name in ipairs(expected) do
+        assert.is_truthy(all[name], 'Missing query: ' .. name)
+      end
+    end)
+
+    it('contains known Monix queries', function()
+      local expected = {
+        'monix/now_unit',
+        'monix/task_none',
+        'monix/task_some',
+        'monix/task_either',
+        'monix/map_unit',
+        'monix/map_value',
+        'monix/tap_eval',
+        'monix/flat_tap_eval',
+        'monix/redeem',
+        'monix/redeem_with',
+        'monix/from_either',
+        'monix/from_try',
+        'monix/sequence_traverse',
+        'monix/par_traverse_n',
+        'monix/par_sequence_n',
+        'monix/delay_execution',
+        'monix/delay_execution_flatmap',
+        'monix/task_when',
+        'monix/task_unless',
+        'monix/raise_when',
+        'monix/raise_unless',
+        'monix/obs_now_unit',
+        'monix/obs_map_eval_now',
+        'monix/obs_switch_if_empty',
       }
       local all = libs.get_all_queries()
       for _, name in ipairs(expected) do

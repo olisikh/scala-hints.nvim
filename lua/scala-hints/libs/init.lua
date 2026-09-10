@@ -13,6 +13,7 @@ local supported_libs = {
   'zio',
   'cats',
   'cats-effect',
+  'monix',
 }
 
 --- Cached merged query table: { "lib/query_name" -> query_def }

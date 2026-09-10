@@ -6,6 +6,7 @@ val scala3Version = "3.8.1"
 val zioVersion = "2.1.7"
 val catsEffectVersion = "3.5.7"
 val catsVersion = "2.12.0"
+val monixVersion = "3.4.0"
 
 lazy val root = project
   .in(file("."))
@@ -24,6 +25,9 @@ lazy val root = project
       
       // Cats (for tagless-final)
       "org.typelevel" %% "cats-core" % catsVersion,
+
+      // Monix (Task and Observable)
+      "io.monix" %% "monix" % monixVersion,
     ),
     scalacOptions ++= Seq(
       "-deprecation",

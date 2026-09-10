@@ -1,6 +1,6 @@
 # scala-hints.nvim
 
-Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, and **Cats tagless-final (F[_])** Scala code.
+Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effect (IO/Resource)**, **Cats tagless-final (F[_])**, and **Monix (Task/Observable)** Scala code.
 
 ## Demo
 
@@ -8,10 +8,11 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ## Features
 
-- **90 Treesitter patterns** detecting common effect code smells with idiomatic replacements
+- **114 Treesitter patterns** detecting common effect code smells with idiomatic replacements
   - 35 ZIO patterns
   - 40 Cats-Effect patterns  
   - 15 Cats tagless-final patterns
+  - 24 Monix patterns
 - **Native diagnostics & code actions** via `vim.diagnostic.set()` and LSP handler
 - **Metals-aware** — type verification ensures replacements only apply to actual effect types
 - **Evidence-gated** — tagless-final patterns verify typeclass bounds in enclosing `def` signatures
@@ -72,10 +73,11 @@ Full documentation is available on the [Wiki](https://github.com/olisikh/scala-h
 
 - [Installation](https://github.com/olisikh/scala-hints.nvim/wiki/1.-Installation) — setup instructions
 - [Configuration](https://github.com/olisikh/scala-hints.nvim/wiki/2.-Configuration) — all options
-- [Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns) — all 90 patterns with detection rules
+- [Patterns](https://github.com/olisikh/scala-hints.nvim/wiki/3.-Patterns) — all 114 patterns with detection rules
 - [ZIO](https://github.com/olisikh/scala-hints.nvim/wiki/4.-ZIO) — deep dive into ZIO patterns (35)
 - [Cats-Effect](https://github.com/olisikh/scala-hints.nvim/wiki/5.-Cats-Effect) — IO/Resource patterns (40)
 - [Cats Tagless-Final](https://github.com/olisikh/scala-hints.nvim/wiki/6.-Cats-Tagless-Final) — F[_] patterns (15)
+- [Monix](https://github.com/olisikh/scala-hints.nvim/wiki) — Task/Observable patterns (24)
 
 ## Troubleshooting
 
@@ -90,5 +92,6 @@ See [AGENTS.md](AGENTS.md) for architecture details and the pattern addition gui
 
 - [ZIO Documentation](https://zio.dev/)
 - [Cats-Effect Documentation](https://typelevel.org/cats-effect/)
+- [Monix Documentation](https://monix.io/)
 - [IntelliJ ZIO Plugin](https://plugins.jetbrains.com/plugin/13820-zio-for-intellij/features)
 - [nvim-metals](https://github.com/scalameta/nvim-metals)
