@@ -39,11 +39,6 @@ local function is_monix_observable_type(uri_value)
     or string.find(uri_value, '/monix/reactive/package%.scala$') ~= nil
 end
 
---- Either Monix Task or Observable (used where the replacement is shared)
-local function is_monix_type(uri_value)
-  return is_monix_task_type(uri_value) or is_monix_observable_type(uri_value)
-end
-
 local function parse_query(query)
   return ts.query.parse('scala', query)
 end
@@ -1462,6 +1457,7 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local obs_node = matches[1][1]
+      local method_node = matches[2][1]
       local finish = matches[4][1]
 
       local start_row, start_col, _, _ = obs_node:range()
@@ -1471,7 +1467,7 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Observable.unit',
-        title = 'Monix: replace Observable.now(()) with Observable.unit',
+        title = 'Monix: replace Observable.' .. utils.get_node_text(bufnr, method_node) .. '(()) with Observable.unit',
       }
 
       return {

@@ -59,6 +59,7 @@ describe('Monix queries with type definition verification', function()
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
         replacement = 'Task.unit',
+        title = 'Monix: replace Task.pure(()) with Task.unit',
       })
     end)
 
@@ -91,6 +92,20 @@ describe('Monix queries with type definition verification', function()
       })
     end)
 
+    it('matches Task.pure(None) and preserves the matched constructor in the title', function()
+      local source = [[val x = Task.pure(None)]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.task_none)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Task.none',
+        title = 'Monix: replace Task.pure(None) with Task.none',
+      })
+    end)
+
     it('does not match Task.now(Some(1))', function()
       local source = [[val x = Task.now(Some(1))]]
       bufnr, root = H.parse_scala(source)
@@ -118,6 +133,20 @@ describe('Monix queries with type definition verification', function()
         title = 'Monix: replace Task.now(Some(v)) with Task.some(v)',
       })
     end)
+
+    it('matches Task.pure(Some(v)) and preserves the matched constructor in the title', function()
+      local source = [[val x = Task.pure(Some(42))]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.task_some)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Task.some(42)',
+        title = 'Monix: replace Task.pure(Some(v)) with Task.some(v)',
+      })
+    end)
   end)
 
   ---------------------------------------------------------------------------
@@ -134,6 +163,20 @@ describe('Monix queries with type definition verification', function()
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
         replacement = 'Task.right(42)',
+      })
+    end)
+
+    it('matches Task.pure(Right(v)) and preserves the matched constructor in the title', function()
+      local source = [[val x = Task.pure(Right(42))]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.task_either)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Task.right(42)',
+        title = 'Monix: replace Task.pure(Right(v)) with Task.right(v)',
       })
     end)
 
@@ -348,6 +391,20 @@ describe('Monix queries with type definition verification', function()
       })
     end)
 
+    it('matches Task.apply in the fold and preserves the matched constructor in the title', function()
+      local source = [[val x = either.fold(Task.raiseError, Task.apply)]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.from_either)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Task.fromEither(either)',
+        title = 'Monix: replace .fold(Task.raiseError, Task.apply) with Task.fromEither',
+      })
+    end)
+
     it('does not match when the fold functions are not Task combinators', function()
       local source = [[val x = either.fold(Task.raiseError, other)]]
       bufnr, root = H.parse_scala(source)
@@ -373,6 +430,20 @@ describe('Monix queries with type definition verification', function()
       H.assert_result(results[1], {
         replacement = 'Task.fromTry(Try(1))',
         title = 'Monix: replace .fold(Task.raiseError, Task.now) with Task.fromTry',
+      })
+    end)
+
+    it('matches Task.pure in the fold and preserves the matched constructor in the title', function()
+      local source = [[val x = Try(1).fold(Task.raiseError, Task.pure)]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.from_try)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Task.fromTry(Try(1))',
+        title = 'Monix: replace .fold(Task.raiseError, Task.pure) with Task.fromTry',
       })
     end)
 
@@ -613,6 +684,20 @@ describe('Monix queries with type definition verification', function()
       H.assert_result(results[1], {
         replacement = 'Observable.unit',
         title = 'Monix: replace Observable.now(()) with Observable.unit',
+      })
+    end)
+
+    it('matches Observable.pure(()) and preserves the matched constructor in the title', function()
+      local source = [[val x = Observable.pure(())]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.obs_now_unit)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'Observable.unit',
+        title = 'Monix: replace Observable.pure(()) with Observable.unit',
       })
     end)
   end)
