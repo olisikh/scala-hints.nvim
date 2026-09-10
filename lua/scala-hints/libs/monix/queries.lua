@@ -174,6 +174,15 @@ local function extract_case_map(bufnr, match_node)
   return case_map
 end
 
+--- Wrap compound lambda bodies so statements retain their scope when moved
+--- from a Scala block or case clause into an inline function literal.
+local function format_lambda_body(body)
+  if body:find('\n', 1, true) or body:find(';', 1, true) then
+    return '{\n' .. body .. '\n}'
+  end
+  return body
+end
+
 return {
   ---------------------------------------------------------------------------
   -- Task: lifting constants
@@ -536,7 +545,7 @@ return {
         local child = body_block:named_child(i)
         table.insert(body_parts, utils.get_node_text(bufnr, child))
       end
-      local body_text = table.concat(body_parts, '; ')
+      local body_text = format_lambda_body(table.concat(body_parts, '; '))
 
       -- The lambda body passed to .tapEval evaluates to its LAST
       -- expression, so that expression (not the first) must be a Monix
@@ -669,8 +678,8 @@ return {
         return {}
       end
 
-      local left_fn = left.param .. ' => ' .. left.body
-      local right_fn = right.param .. ' => ' .. right.body
+      local left_fn = left.param .. ' => ' .. format_lambda_body(left.body)
+      local right_fn = right.param .. ' => ' .. format_lambda_body(right.body)
 
       -- Start range at ".attempt" to remove it (the dot before attempt)
       local dstart_row, dstart_col, _, _ = attempt_id:range()
@@ -743,8 +752,8 @@ return {
         return {}
       end
 
-      local left_fn = left.param .. ' => ' .. left.body
-      local right_fn = right.param .. ' => ' .. right.body
+      local left_fn = left.param .. ' => ' .. format_lambda_body(left.body)
+      local right_fn = right.param .. ' => ' .. format_lambda_body(right.body)
 
       -- Start range at ".attempt" to remove it (the dot before attempt)
       local dstart_row, dstart_col, _, _ = attempt_id:range()

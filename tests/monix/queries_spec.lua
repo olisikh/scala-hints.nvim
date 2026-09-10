@@ -265,6 +265,19 @@ describe('Monix queries with type definition verification', function()
       })
     end)
 
+    it('wraps multiple side effects in a lambda block', function()
+      local source = [[val x = Task(1).map(v => { logTask(v); recordTask(v); v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.tap_eval)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'tapEval(v => {\nlogTask(v); recordTask(v)\n})',
+      })
+    end)
+
     it('does not match when last expression is not the parameter', function()
       local source = [[val x = Task(1).map(v => { logTask(v); other })]]
       bufnr, root = H.parse_scala(source)
@@ -324,6 +337,32 @@ describe('Monix queries with type definition verification', function()
       })
     end)
 
+    it('wraps multiline case bodies in lambda blocks', function()
+      local semantic = require('scala-hints.semantic')
+      local orig = semantic.type_definition_predicate
+      semantic.type_definition_predicate = function(b, node, _pred, cb)
+        cb(utils_node_text(node, b) == 'Task(1)')
+      end
+      local source = [[val x = Task(1).attempt.map {
+  case Right(v) =>
+    val next = v + 1
+    next
+  case Left(e) =>
+    val fallback = 0
+    fallback
+}]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.redeem)
+      local results = H.resolve_pending(pending)
+      semantic.type_definition_predicate = orig
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = '.redeem(e => {\nval fallback = 0\n    fallback\n}, v => {\nval next = v + 1\n    next\n})',
+      })
+    end)
+
     it('chooses redeemWith when a case body returns a Task', function()
       local source = [[val x = Task(1).attempt.map {
   case Right(v) => Task.now(v)
@@ -369,6 +408,26 @@ describe('Monix queries with type definition verification', function()
       H.assert_result(results[1], {
         replacement = '.redeemWith(e => Task.now(0), v => Task.now(v + 1))',
         title = 'Monix: replace .attempt.flatMap with .redeemWith',
+      })
+    end)
+
+    it('wraps multiline Task case bodies in lambda blocks', function()
+      local source = [[val x = Task(1).attempt.flatMap {
+  case Right(v) =>
+    val next = Task.now(v + 1)
+    next
+  case Left(e) =>
+    val fallback = Task.now(0)
+    fallback
+}]]
+      bufnr, root = H.parse_scala(source)
+
+      local _, pending = H.run_handler(bufnr, root, queries.redeem_with)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = '.redeemWith(e => {\nval fallback = Task.now(0)\n    fallback\n}, v => {\nval next = Task.now(v + 1)\n    next\n})',
       })
     end)
   end)
