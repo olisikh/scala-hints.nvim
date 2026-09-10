@@ -6,6 +6,7 @@ local queries = require('scala-hints.libs.monix.queries')
 
 describe('Monix queries with type definition verification', function()
   local bufnr
+  local root
 
   before_each(function()
     H.mock_type_definition_predicate(true)

@@ -222,12 +222,12 @@ return {
     value: (identifier) @_1 (#eq? @_1 "Task")
     field: (identifier) @_2 (#any-of? @_2 "now" "pure")
   ) @_3
-  arguments: (arguments (identifier) @_4 (#eq? @_4 "None"))
+  arguments: (arguments (identifier) @_4 (#eq? @_4 "None")) @_5
 )
 ]]),
     handler = function(bufnr, matches)
       local task_node = matches[1][1]
-      local finish = matches[3][1]
+      local finish = matches[5][1]
 
       local start_row, start_col, _, _ = task_node:range()
       local _, _, end_row, end_col = finish:range()
@@ -1529,10 +1529,12 @@ return {
 ]]),
     handler = function(bufnr, matches)
       local verify_target = matches[1][1]
-      local target = matches[2][1]
       local finish = matches[5][1]
 
-      local start_row, start_col, _, _ = target:range()
+      -- Replace the whole call expression (receiver + .switchIfEmpty(...))
+      -- with the receiver, so the range must start at the receiver, not at
+      -- the switchIfEmpty identifier (otherwise the leading dot survives).
+      local start_row, start_col, _, _ = verify_target:range()
       local _, _, end_row, end_col = finish:range()
 
       local receiver_text = utils.get_node_text(bufnr, verify_target)
