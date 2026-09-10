@@ -19,5 +19,9 @@ test-cats-effect:
 test-cats:
 	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/cats/ $(PLENARY_OPTS)"
 
+# Run Monix query tests
+test-monix:
+	$(NVIM_TEST) -c "PlenaryBustedDirectory tests/monix/ $(PLENARY_OPTS)"
+
 # Run all library query tests
-test-libs: test-zio test-cats-effect test-cats
+test-libs: test-zio test-cats-effect test-cats test-monix

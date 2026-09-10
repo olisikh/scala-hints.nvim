@@ -13,6 +13,7 @@ local supported_libs = {
   'zio',
   'cats',
   'cats-effect',
+  'monix',
 }
 
 local levels = {
