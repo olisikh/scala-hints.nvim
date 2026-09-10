@@ -33,8 +33,9 @@ def smell07 = Task(1).map(_ => ())
 // Task(1).map(_ => 42) ~> Task(1).as(42)
 def smell08 = Task(1).map(_ => 42)
 
-// Task(1).map(v => { log(v); v }) ~> Task(1).tapEval(v => log(v))
-def smell09 = Task(1).map(v => { log(v); v })
+// Task(1).map(v => { logTask(v); v }) ~> Task(1).tapEval(v => logTask(v))
+// (the side effect must be Task-typed for tapEval to be valid)
+def smell09 = Task(1).map(v => { logTask(v); v })
 
 // Task(1).flatMap(a => effect(a).as(a)) ~> Task(1).tapEval(a => effect(a))
 def smell10 = Task(1).flatMap(a => effect(a).as(a))
@@ -100,7 +101,7 @@ def smell26(obs: Observable[Int]) = obs.switchIfEmpty(Observable.empty)
 
 // Helpers referenced by the smells above; defined at the bottom so each
 // smell def stays short and matches the treesitter query sources.
-def log(v: Int): Unit = println(s"log: $v")
+def logTask(v: Int): Task[Unit] = Task.eval(println(s"log: $v"))
 def effect(a: Int): Task[Int] = Task.now(a)
 def loadUser(id: Int): Task[Int] = Task.now(id)
 def save(id: Int): Task[Unit] = Task.unit

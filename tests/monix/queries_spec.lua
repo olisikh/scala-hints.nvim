@@ -199,7 +199,9 @@ describe('Monix queries with type definition verification', function()
   ---------------------------------------------------------------------------
   describe('tap_eval', function()
     it('matches .map(v => { eff(v); v }) and suggests .tapEval', function()
-      local source = [[val x = Task(1).map(v => { log(v); v })]]
+      -- Body expression is Task-typed (logTask), matching what the handler
+      -- verifies against Metals in real usage.
+      local source = [[val x = Task(1).map(v => { logTask(v); v })]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.tap_eval)
@@ -207,13 +209,13 @@ describe('Monix queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = 'tapEval(v => log(v))',
+        replacement = 'tapEval(v => logTask(v))',
         title = 'Monix: replace .map returning its parameter with .tapEval',
       })
     end)
 
     it('does not match when last expression is not the parameter', function()
-      local source = [[val x = Task(1).map(v => { log(v); other })]]
+      local source = [[val x = Task(1).map(v => { logTask(v); other })]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.tap_eval)
