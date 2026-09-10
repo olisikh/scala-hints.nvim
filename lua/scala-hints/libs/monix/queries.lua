@@ -196,6 +196,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local method_node = matches[2][1]
       local task_node = matches[1][1]
       local finish = matches[4][1]
 
@@ -206,7 +207,7 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.unit',
-        title = 'Monix: replace Task.now(()) with Task.unit',
+        title = 'Monix: replace Task.' .. utils.get_node_text(bufnr, method_node) .. '(()) with Task.unit',
       }
 
       return {
@@ -238,6 +239,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local method_node = matches[2][1]
       local task_node = matches[1][1]
       local finish = matches[5][1]
 
@@ -248,7 +250,7 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.none',
-        title = 'Monix: replace Task.now(None) with Task.none',
+        title = 'Monix: replace Task.' .. utils.get_node_text(bufnr, method_node) .. '(None) with Task.none',
       }
 
       return {
@@ -285,6 +287,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local method_node = matches[2][1]
       local task_node = matches[1][1]
       local value = matches[5][1]
       local finish = matches[7][1]
@@ -298,7 +301,7 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.some(' .. value_text .. ')',
-        title = 'Monix: replace Task.now(Some(v)) with Task.some(v)',
+        title = 'Monix: replace Task.' .. utils.get_node_text(bufnr, method_node) .. '(Some(v)) with Task.some(v)',
       }
 
       return {
@@ -335,6 +338,7 @@ return {
 )
 ]]),
     handler = function(bufnr, matches)
+      local method_node = matches[2][1]
       local task_node = matches[1][1]
       local ctor = matches[4][1]
       local value = matches[5][1]
@@ -355,7 +359,13 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.' .. method .. '(' .. value_text .. ')',
-        title = 'Monix: replace Task.now(' .. ctor_text .. '(v)) with Task.' .. method .. '(v)',
+        title = 'Monix: replace Task.'
+          .. utils.get_node_text(bufnr, method_node)
+          .. '('
+          .. ctor_text
+          .. '(v)) with Task.'
+          .. method
+          .. '(v)',
       }
 
       return {
@@ -797,6 +807,7 @@ return {
     handler = function(bufnr, matches)
       local either = matches[1][1]
       local task_target = matches[3][1]
+      local lift_method = matches[6][1]
       local finish = matches[8][1]
 
       -- Skip if the value is a Try(...) call — that's handled by from_try
@@ -819,7 +830,9 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.fromEither(' .. either_text .. ')',
-        title = 'Monix: replace .fold(Task.raiseError, Task.now) with Task.fromEither',
+        title = 'Monix: replace .fold(Task.raiseError, Task.'
+          .. utils.get_node_text(bufnr, lift_method)
+          .. ') with Task.fromEither',
       }
 
       return {
@@ -867,6 +880,7 @@ return {
       local try_func = matches[1][1]
       local try_call = matches[3][1]
       local task_target = matches[5][1]
+      local lift_method = matches[8][1]
       local finish = matches[10][1]
 
       -- Verify the function is Try (bare or qualified like scala.util.Try)
@@ -884,7 +898,9 @@ return {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
         action = { start_row = start_row, start_col = start_col, end_row = end_row, end_col = end_col },
         replacement = 'Task.fromTry(' .. try_text .. ')',
-        title = 'Monix: replace .fold(Task.raiseError, Task.now) with Task.fromTry',
+        title = 'Monix: replace .fold(Task.raiseError, Task.'
+          .. utils.get_node_text(bufnr, lift_method)
+          .. ') with Task.fromTry',
       }
 
       return {

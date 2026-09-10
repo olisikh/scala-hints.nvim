@@ -271,9 +271,9 @@ describe('Monix queries with type definition verification', function()
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      local results = H.resolve_pending(pending)
       semantic.type_definition_predicate = orig
 
-      local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
         replacement = '.redeem(e => 0, v => v + 1)',
