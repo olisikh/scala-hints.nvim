@@ -1203,7 +1203,8 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_monix_task_type, function(is_task)
+            local verify_node = unwrap_single_expression_node(verify_target)
+            semantic.type_definition_predicate(bufnr, verify_node, is_monix_task_type, function(is_task)
               if is_task then
                 done(item)
               else
@@ -1270,7 +1271,8 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, verify_target, is_monix_task_type, function(is_task)
+            local verify_node = unwrap_single_expression_node(verify_target)
+            semantic.type_definition_predicate(bufnr, verify_node, is_monix_task_type, function(is_task)
               if is_task then
                 done(item)
               else
@@ -1327,7 +1329,10 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, consequence, is_monix_task_type, function(is_task)
+            -- Unwrap single-expression blocks so typeDefinition resolves
+            -- against the Task.raiseError call, not the block node.
+            local verify_node = unwrap_single_expression_node(consequence)
+            semantic.type_definition_predicate(bufnr, verify_node, is_monix_task_type, function(is_task)
               if is_task then
                 done(item)
               else
@@ -1384,7 +1389,10 @@ return {
         ready = {},
         pending = {
           function(done)
-            semantic.type_definition_predicate(bufnr, consequence, is_monix_task_type, function(is_task)
+            -- Unwrap single-expression blocks so typeDefinition resolves
+            -- against the Task.raiseError call, not the block node.
+            local verify_node = unwrap_single_expression_node(consequence)
+            semantic.type_definition_predicate(bufnr, verify_node, is_monix_task_type, function(is_task)
               if is_task then
                 done(item)
               else
