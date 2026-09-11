@@ -4,7 +4,9 @@
 val scala3Version = "3.8.1"
 
 val zioVersion = "2.1.7"
-val catsEffectVersion = "3.5.7"
+// Monix 3.4.0's monix-catnap module depends on Cats-Effect 2.x.
+// Keep this aligned so sbt can export the root Bloop target for Metals.
+val catsEffectVersion = "2.5.1"
 val catsVersion = "2.12.0"
 val monixVersion = "3.4.0"
 

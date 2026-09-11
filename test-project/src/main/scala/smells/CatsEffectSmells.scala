@@ -6,9 +6,13 @@ package smells
 
 import cats.effect.*
 import cats.syntax.all.*
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.*
 
 object CatsEffectSmells:
+
+  // Cats-Effect 2 requires Timer[IO] for IO.sleep.
+  given Timer[IO] = IO.timer(ExecutionContext.global)
 
   // ============================================================================
   // Console Output (4 patterns)
