@@ -4,6 +4,7 @@ local diagnostics = require('scala-hints.diagnostics')
 local actions = require('scala-hints.actions')
 local logger = require('scala-hints.logger')
 local apply_all = require('scala-hints.apply_all')
+local workspace = require('scala-hints.workspace')
 
 local M = {}
 
@@ -47,6 +48,21 @@ M.setup = function(opts)
 
       logger.info('Metals attached to buffer ' .. bufnr .. ', starting scala-hints client')
       client.start(bufnr)
+      workspace.start(bufnr, attached_client)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('BufEnter', {
+    group = group,
+    callback = function(event)
+      workspace.refresh_buffer(event.buf)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('BufWipeout', {
+    group = group,
+    callback = function(event)
+      workspace.forget_buffer(event.buf)
     end,
   })
 
@@ -54,6 +70,20 @@ M.setup = function(opts)
     apply_all.run(0)
   end, {
     desc = 'Apply all scala-hints fixes in current buffer',
+  })
+
+  vim.api.nvim_create_user_command('ScalaHintsWorkspaceRefresh', function()
+    workspace.refresh_all()
+  end, {
+    desc = 'Re-index workspace Scala diagnostics',
+    force = true,
+  })
+
+  vim.api.nvim_create_user_command('ScalaHintsWorkspaceCancel', function()
+    workspace.cancel_all()
+  end, {
+    desc = 'Cancel workspace Scala diagnostics indexing',
+    force = true,
   })
 
   logger.info('Plugin initialized')

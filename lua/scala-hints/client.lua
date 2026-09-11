@@ -9,6 +9,9 @@ local M = {}
 
 -- Single client instance (one in-process server for all scala buffers)
 local client_id = nil
+local active_dispatchers = nil
+local active_dispatcher_generation = 0
+local client_lifecycle_generation = 0
 
 local function is_valid_bufnr(bufnr)
   return type(bufnr) == 'number' and api.nvim_buf_is_valid(bufnr)
@@ -42,70 +45,127 @@ local function metals_ready(bufnr)
   return false
 end
 
--- Per-buffer flag: true while a readiness-polling loop is active.
+-- Per-buffer readiness state. The most recent caller owns the completion
+-- callback, which lets workspace indexing supersede stale queued work.
 local pending_readiness = {}
 
 -- Forward declaration (defined below schedule_diagnostics)
 local refresh_diagnostics
 
+local function complete(opts, ok)
+  if opts and opts.on_complete then
+    opts.on_complete(ok)
+  end
+end
+
+local function cancel_pending_readiness()
+  for _, state in pairs(pending_readiness) do
+    complete(state.opts, false)
+  end
+  pending_readiness = {}
+end
+
+local function next_client_lifecycle()
+  client_lifecycle_generation = client_lifecycle_generation + 1
+  return client_lifecycle_generation
+end
+
+local function invalidate_dispatcher_state()
+  active_dispatchers = nil
+  active_dispatcher_generation = active_dispatcher_generation + 1
+  cancel_pending_readiness()
+end
+
+local function clear_client_state(lifecycle_generation)
+  if lifecycle_generation ~= client_lifecycle_generation then
+    return false
+  end
+
+  client_id = nil
+  invalidate_dispatcher_state()
+  return true
+end
+
 --- Collect diagnostics once Metals is ready, polling if necessary.
 ---@param bufnr integer
 ---@param dispatchers vim.lsp.rpc.Dispatchers
-local function schedule_diagnostics(bufnr, dispatchers)
+---@param opts table?
+---@param dispatcher_generation integer
+local function schedule_diagnostics(bufnr, dispatchers, opts, dispatcher_generation)
   if not is_valid_bufnr(bufnr) then
+    complete(opts, false)
     return
   end
 
   if not metals_ready(bufnr) then
-    -- Start a polling loop (only one per buffer).
-    if not pending_readiness[bufnr] then
-      pending_readiness[bufnr] = true
-      logger.info('Metals not ready for buffer ' .. bufnr .. ', polling for readiness')
+    local state = pending_readiness[bufnr]
+    if state then
+      state.opts = opts
+      state.dispatchers = dispatchers
+      state.dispatcher_generation = dispatcher_generation
+      return
+    end
 
-      local attempts = 0
-      local max_attempts = 15 -- 15 × 2 s = 30 s max wait
-      local interval_ms = 2000
+    state = {
+      opts = opts,
+      dispatchers = dispatchers,
+      dispatcher_generation = dispatcher_generation,
+    }
+    pending_readiness[bufnr] = state
+    logger.info('Metals not ready for buffer ' .. bufnr .. ', polling for readiness')
 
-      local function poll()
-        attempts = attempts + 1
-        if not is_valid_bufnr(bufnr) or attempts > max_attempts then
-          pending_readiness[bufnr] = nil
-          if attempts > max_attempts then
-            logger.warn('Metals readiness timeout for buffer ' .. bufnr .. ' after ' .. max_attempts .. ' attempts')
-          end
-          return
-        end
+    local attempts = 0
+    local max_attempts = 15 -- 15 × 2 s = 30 s max wait
+    local interval_ms = 2000
 
-        if metals_ready(bufnr) then
-          pending_readiness[bufnr] = nil
-          logger.info('Metals ready for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '), collecting diagnostics')
-          refresh_diagnostics(bufnr, dispatchers)
-        else
-          logger.debug('Metals still indexing for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '/' .. max_attempts .. ')')
-          vim.defer_fn(poll, interval_ms)
-        end
+    local function poll()
+      if pending_readiness[bufnr] ~= state then
+        return
       end
 
-      vim.defer_fn(poll, interval_ms)
+      attempts = attempts + 1
+      if not is_valid_bufnr(bufnr) or attempts > max_attempts then
+        pending_readiness[bufnr] = nil
+        if attempts > max_attempts then
+          logger.warn('Metals readiness timeout for buffer ' .. bufnr .. ' after ' .. max_attempts .. ' attempts')
+        end
+        complete(state.opts, false)
+        return
+      end
+
+      if metals_ready(bufnr) then
+        pending_readiness[bufnr] = nil
+        logger.info('Metals ready for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '), collecting diagnostics')
+        refresh_diagnostics(bufnr, state.dispatchers, state.opts, state.dispatcher_generation)
+      else
+        logger.debug('Metals still indexing for buffer ' .. bufnr .. ' (attempt ' .. attempts .. '/' .. max_attempts .. ')')
+        vim.defer_fn(poll, interval_ms)
+      end
     end
+
+    vim.defer_fn(poll, interval_ms)
     return
   end
 
-  refresh_diagnostics(bufnr, dispatchers)
+  refresh_diagnostics(bufnr, dispatchers, opts, dispatcher_generation)
 end
 
---- Collect diagnostics and push them back to Neovim via the dispatcher
+--- Collect diagnostics and push them back to Neovim via the dispatcher.
 ---@param bufnr integer
 ---@param dispatchers vim.lsp.rpc.Dispatchers
-refresh_diagnostics = function(bufnr, dispatchers)
+---@param opts table?
+---@param dispatcher_generation integer
+refresh_diagnostics = function(bufnr, dispatchers, opts, dispatcher_generation)
   if not is_valid_bufnr(bufnr) then
+    complete(opts, false)
     return
   end
 
   logger.info('Collecting diagnostics for buffer ' .. bufnr)
 
   diagnostics_mod.collect_diagnostics(bufnr, function(results)
-    if not results or not is_valid_bufnr(bufnr) then
+    if not results or not is_valid_bufnr(bufnr) or (opts and opts.is_current and not opts.is_current()) then
+      complete(opts, false)
       return
     end
 
@@ -126,14 +186,40 @@ refresh_diagnostics = function(bufnr, dispatchers)
     -- Push diagnostics through the dispatcher notification channel.
     -- Neovim will handle them via its built-in publishDiagnostics handler.
     vim.schedule(function()
-      if is_valid_bufnr(bufnr) then
+      local published = false
+      if is_valid_bufnr(bufnr)
+        and dispatcher_generation == active_dispatcher_generation
+        and dispatchers == active_dispatchers
+        and (not opts or not opts.is_current or opts.is_current())
+      then
         dispatchers.notification('textDocument/publishDiagnostics', {
           uri = vim.uri_from_bufnr(bufnr),
           diagnostics = lsp_diagnostics,
         })
+        published = true
       end
+      complete(opts, published)
     end)
   end)
+end
+
+--- Refresh one buffer outside the LSP didOpen/didSave path.
+---@param bufnr integer
+---@param opts table?
+---@return boolean
+function M.refresh_diagnostics(bufnr, opts)
+  opts = opts or {}
+  if not active_dispatchers then
+    complete(opts, false)
+    return false
+  end
+
+  if opts.wait_for_metals == false then
+    refresh_diagnostics(bufnr, active_dispatchers, opts, active_dispatcher_generation)
+  else
+    schedule_diagnostics(bufnr, active_dispatchers, opts, active_dispatcher_generation)
+  end
+  return true
 end
 
 --- Create the in-process RPC "server".
@@ -142,6 +228,8 @@ end
 ---@param dispatchers vim.lsp.rpc.Dispatchers
 ---@return vim.lsp.rpc.PublicClient
 function M.rpc_start(dispatchers)
+  active_dispatchers = dispatchers
+  active_dispatcher_generation = active_dispatcher_generation + 1
   local message_id = 0
   local stopped = false
 
@@ -201,7 +289,16 @@ function M.rpc_start(dispatchers)
       if uri then
         local bufnr = vim.uri_to_bufnr(uri)
         logger.info('Received ' .. method .. ' for buffer ' .. bufnr)
-        schedule_diagnostics(bufnr, dispatchers)
+
+        -- Workspace-managed buffers are refreshed by the coordinator so its
+        -- single-worker queue can prevent duplicate initial didOpen work.
+        if vim.b[bufnr].scala_hints_workspace_managed then
+          if method == 'textDocument/didSave' then
+            require('scala-hints.workspace').refresh_buffer(bufnr)
+          end
+        else
+          schedule_diagnostics(bufnr, dispatchers, nil, active_dispatcher_generation)
+        end
       end
       return true, message_id
     end
@@ -362,6 +459,10 @@ function M.start(bufnr)
 
   logger.info('Starting in-process LSP client')
 
+  local lifecycle_generation = next_client_lifecycle()
+  -- The old dispatcher belongs to the stopped client. Clear it before
+  -- attempting a replacement so a failed start cannot publish through it.
+  invalidate_dispatcher_state()
   client_id = lsp.start({
     name = constants.name,
     cmd = M.rpc_start,
@@ -372,7 +473,7 @@ function M.start(bufnr)
     end,
     on_exit = function(code, signal)
       logger.info(('Client exited (code=%s, signal=%s)'):format(code, signal))
-      client_id = nil
+      clear_client_state(lifecycle_generation)
     end,
   }, {
     bufnr = bufnr,
@@ -389,6 +490,8 @@ end
 
 --- Stop the in-process LSP client
 function M.stop()
+  next_client_lifecycle()
+  invalidate_dispatcher_state()
   if not client_id then
     return
   end

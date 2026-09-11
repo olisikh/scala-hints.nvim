@@ -44,13 +44,14 @@
 | `cats/evidence.lua` | Typeclass evidence detector for tagless-final F[_] patterns |
 | `semantic.lua` | LSP type definition verification, caching, and `type_definition_predicate` |
 | `client.lua` | In-process LSP client; publishes diagnostics and code actions |
+| `workspace.lua` | Always-on, single-worker Metals workspace scanner using hidden managed Scala buffers |
 | `utils.lua` | Async helpers, node inspection |
 | `logger.lua` | File-based logging |
 | `constants.lua` | Shared metadata (namespace name, filetype) |
 
 ### Query Handler Flow
 
-1. **Trigger**: `LspAttach` for Metals starts the in-process client; diagnostics refresh on `textDocument/didOpen` and `textDocument/didSave`.
+1. **Trigger**: `LspAttach` for Metals starts the in-process client and the per-root workspace scanner. The scanner waits for Metals readiness, queues hidden Scala buffers one at a time, and diagnostics refresh on `textDocument/didOpen` and `textDocument/didSave`.
 2. **Execution**: `diagnostics.collect_diagnostics` or `actions.resolve_actions` iterates over queries.
 3. **Matching**: `query.run_query` executes the Treesitter query against the buffer's AST.
 4. **Handling**: Each match invokes the handler from `libs/zio/queries.lua`, `libs/cats-effect/queries.lua`, or `libs/cats/queries.lua`.
@@ -159,7 +160,7 @@ Cats-Effect (IO/Resource) patterns are implemented under `lua/scala-hints/libs/c
 
 - **Treesitter queries** use S-expressions with `#eq?` and `#any-of?` predicates.
 - **Async**: All queries run via `plenary.async`; `semantic.type_definition_predicate` retries with configurable backoff (default 400/1000/2000 ms).
-- **Metals readiness**: Diagnostics are published only when a Metals client is attached and initialized; the in-process client refreshes on `didOpen`/`didSave`.
+- **Metals readiness**: Diagnostics are published only when a Metals client is attached and initialized; the in-process client refreshes on `didOpen`/`didSave`, while `workspace.lua` performs the initial hidden-buffer project scan once Metals is idle.
 - **Timeouts**: Diagnostics 30s, code actions 10s, Metals readiness 10s.
 - **Type definition caching**: Results cached per buffer tick to avoid redundant LSP calls.
 - **Type checking**: Type definition URIs matched against `is_zio_type`/`is_zlayer_type` or `is_cats_io_type` predicates.

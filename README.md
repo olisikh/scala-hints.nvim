@@ -13,6 +13,7 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
   - 40 Cats-Effect patterns  
   - 15 Cats tagless-final patterns
   - 24 Monix patterns
+- **Workspace diagnostics** — after Metals is ready, indexes every Scala source file for Trouble, quickfix, and native navigation
 - **Native diagnostics & code actions** via `vim.diagnostic.set()` and LSP handler
 - **Metals-aware** — type verification ensures replacements only apply to actual effect types
 - **Evidence-gated** — tagless-final patterns verify typeclass bounds in enclosing `def` signatures
@@ -41,15 +42,18 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ## Usage
 
-1. Open a Scala file with Metals running
-2. Diagnostics appear automatically (default: `HINT` severity)
-3. Apply fixes via `:lua vim.lsp.buf.code_action()` or your keymap
+1. Open any Scala file with Metals running
+2. Once Metals finishes indexing, scala-hints scans every Scala source file in that workspace
+3. Use Trouble, quickfix, or native diagnostic navigation to reach hints in files you have not opened
+4. Apply fixes via `:lua vim.lsp.buf.code_action()` or your keymap
 
 ### Commands
 
 | Command | Description |
 | --- | --- |
 | `:ScalaHintsApplyBuffer` | Apply all fixes in the current buffer |
+| `:ScalaHintsWorkspaceRefresh` | Re-index all Scala files in attached Metals workspaces |
+| `:ScalaHintsWorkspaceCancel` | Cancel active workspace indexing |
 
 ## Configuration
 
@@ -81,7 +85,7 @@ Full documentation is available on the [Wiki](https://github.com/olisikh/scala-h
 
 ## Troubleshooting
 
-- **No diagnostics?** Wait for Metals to initialize (`MetalsReady` / `MetalsInitialized`)
+- **No diagnostics?** Wait for Metals to initialize and complete the initial workspace scan
 - **Diagnostics disappear after undo?** Reopen the buffer or save to refresh
 
 ## Contributing
