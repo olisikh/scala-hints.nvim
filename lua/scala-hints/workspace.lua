@@ -12,6 +12,10 @@ local logger = require('scala-hints.logger').new('workspace')
 
 local M = {}
 
+local settings = {
+  enabled = true,
+}
+
 local coordinators = {}
 local ignored_directories = {
   ['.git'] = true,
@@ -22,6 +26,17 @@ local ignored_directories = {
   ['node_modules'] = true,
   ['target'] = true,
 }
+
+function M.configure(opts)
+  local workspace_diagnostics = opts and opts.workspace_diagnostics
+  if type(workspace_diagnostics) == 'table' and type(workspace_diagnostics.enabled) == 'boolean' then
+    settings.enabled = workspace_diagnostics.enabled
+  end
+
+  if not settings.enabled and M.cancel_all then
+    M.cancel_all()
+  end
+end
 
 local function is_valid_buffer(bufnr)
   return type(bufnr) == 'number' and api.nvim_buf_is_valid(bufnr)
@@ -278,7 +293,7 @@ end
 ---@param bufnr integer
 ---@param metals_client vim.lsp.Client
 function M.start(bufnr, metals_client)
-  if not metals_client then
+  if not settings.enabled or not metals_client then
     return
   end
 
@@ -304,7 +319,7 @@ end
 --- Queue a priority refresh for an indexed buffer when it is opened or saved.
 ---@param bufnr integer
 function M.refresh_buffer(bufnr)
-  if not is_valid_buffer(bufnr) or not vim.b[bufnr].scala_hints_workspace_managed then
+  if not settings.enabled or not is_valid_buffer(bufnr) or not vim.b[bufnr].scala_hints_workspace_managed then
     return
   end
 
@@ -336,6 +351,11 @@ function M.cancel_all()
 end
 
 function M.refresh_all()
+  if not settings.enabled then
+    M.cancel_all()
+    return
+  end
+
   for _, coordinator in pairs(coordinators) do
     coordinator.cancelled = false
     coordinator.discovery_started = false
@@ -364,6 +384,9 @@ function M.is_managed(bufnr)
 end
 
 M._test = {
+  is_enabled = function()
+    return settings.enabled
+  end,
   discover_files = discover_files,
   should_ignore = should_ignore,
   update_metals_client = update_metals_client,

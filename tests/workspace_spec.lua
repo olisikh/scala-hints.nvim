@@ -5,6 +5,7 @@ describe('workspace diagnostics coordinator', function()
   local bufnr
 
   after_each(function()
+    workspace.configure({ workspace_diagnostics = { enabled = true } })
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
       vim.api.nvim_buf_delete(bufnr, { force = true })
     end
@@ -14,6 +15,16 @@ describe('workspace diagnostics coordinator', function()
       vim.fn.delete(temporary_root, 'rf')
     end
     temporary_root = nil
+  end)
+
+  it('enables workspace indexing by default', function()
+    workspace.configure({})
+    assert.is_true(workspace._test.is_enabled())
+  end)
+
+  it('allows workspace indexing to be disabled', function()
+    workspace.configure({ workspace_diagnostics = { enabled = false } })
+    assert.is_false(workspace._test.is_enabled())
   end)
 
   it('discovers Scala sources while excluding generated directories', function()

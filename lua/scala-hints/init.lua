@@ -20,6 +20,7 @@ M.setup = function(opts)
   semantic.configure(opts)
   diagnostics.configure(opts)
   actions.configure(opts)
+  workspace.configure(opts)
 
   -- Listen for Metals attaching to Scala buffers.
   -- When Metals is ready we start (or reuse) our in-process LSP client

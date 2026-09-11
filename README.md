@@ -47,6 +47,8 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 3. Use Trouble, quickfix, or native diagnostic navigation to reach hints in files you have not opened
 4. Apply fixes via `:lua vim.lsp.buf.code_action()` or your keymap
 
+Workspace indexing is enabled by default. Disable it when a project is too large or you only want open-buffer diagnostics.
+
 ### Commands
 
 | Command | Description |
@@ -59,6 +61,9 @@ Opinionated Neovim diagnostics + quickfix code actions for **ZIO**, **Cats-Effec
 
 ```lua
 require('scala-hints').setup({
+  workspace_diagnostics = {
+    enabled = false, -- defaults to true
+  },
   diagnostics = {
     default_severity = 'HINT',
     overrides = {
