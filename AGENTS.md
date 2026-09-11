@@ -136,6 +136,7 @@ These patterns match generic `F[_]` code and are gated by typeclass evidence (co
 | `redeem_with` | `.attempt.flatMap { case Right/Left ... }` | `.redeemWith(...)` | MonadError |
 
 **Evidence Detection**: The `cats/evidence.lua` module parses the nearest enclosing `def` header for:
+
 - Context bounds: `[F[_]: Sync]`
 - Implicit parameters: `(implicit F: Monad[F])`
 - Using clauses (Scala 3): `(using F: Monad[F])`
@@ -179,16 +180,17 @@ Cats-Effect (IO/Resource) patterns are implemented under `lua/scala-hints/libs/c
 
 1. Use `:InspectTree` in Neovim to see the AST for the code you want to match.
 2. Add a new entry to the queries table in the appropriate library:
-  - ZIO: `lua/scala-hints/libs/zio/queries.lua`
-  - Cats-Effect: `lua/scala-hints/libs/cats-effect/queries.lua`
-  - Cats (tagless): `lua/scala-hints/libs/cats/queries.lua`
-   - Write the Treesitter S-expression query.
-   - Implement the `handler` function to extract ranges and suggest replacements.
-   - Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
-3. Register the query name in the library module (`lua/scala-hints/libs/zio/init.lua`, `lua/scala-hints/libs/cats-effect/init.lua`, or `lua/scala-hints/libs/cats/init.lua`). For a new library, add a module and register it in `lua/scala-hints/libs/init.lua`.
-4. Use `semantic.type_definition_predicate` for type verification (ZIO/Cats-Effect), or `cats/evidence.has_capability` for tagless-final patterns.
-5. Add tests in `tests/zio/queries_spec.lua`, `tests/cats_effect/queries_spec.lua`, or `tests/cats/queries_spec.lua` (mock with `H.mock_type_definition_predicate(true)` for LSP-dependent handlers). For new libraries, add `tests/<lib>/queries_spec.lua` and update `tests/libs_registry_spec.lua`.
-6. Update the pattern catalog above.
+
+- ZIO: `lua/scala-hints/libs/zio/queries.lua`
+- Cats-Effect: `lua/scala-hints/libs/cats-effect/queries.lua`
+- Cats (tagless): `lua/scala-hints/libs/cats/queries.lua`
+- Write the Treesitter S-expression query.
+- Implement the `handler` function to extract ranges and suggest replacements.
+- Optionally set `diagnostic_severity` (`HINT`/`INFO`/`WARN`/`ERROR`/`OFF`).
+1. Register the query name in the library module (`lua/scala-hints/libs/zio/init.lua`, `lua/scala-hints/libs/cats-effect/init.lua`, or `lua/scala-hints/libs/cats/init.lua`). For a new library, add a module and register it in `lua/scala-hints/libs/init.lua`.
+2. Use `semantic.type_definition_predicate` for type verification (ZIO/Cats-Effect), or `cats/evidence.has_capability` for tagless-final patterns.
+3. Add tests in `tests/zio/queries_spec.lua`, `tests/cats_effect/queries_spec.lua`, or `tests/cats/queries_spec.lua` (mock with `H.mock_type_definition_predicate(true)` for LSP-dependent handlers). For new libraries, add `tests/<lib>/queries_spec.lua` and update `tests/libs_registry_spec.lua`.
+4. Update the pattern catalog above.
 
 ### Treesitter Query Example
 
@@ -235,12 +237,14 @@ When implementing a new pattern, add a corresponding smell to the test project:
    - Cats tagless-final → `test-project/src/main/scala/smells/CatsTaglessSmells.scala`
 
 2. **Add the smell** following the existing format:
+
    ```scala
    // pattern_name: detection code -> replacement
    def smellN = /* code that triggers the pattern */
    ```
 
 3. **For Cats tagless-final**, include the required typeclass evidence:
+
    ```scala
    def smellN[F[_]: Monad](fa: F[Int]): F[String] =
      fa.flatMap(b => if (b) F.pure("yes") else F.pure("no"))
