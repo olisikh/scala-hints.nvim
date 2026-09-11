@@ -6,11 +6,13 @@ describe('semantic.type_definition_predicate caching', function()
   local original_defer_fn
   local original_make_position_params
   local fake_client
+  local extra_bufnrs
 
-  local function make_node()
+  local function make_node(column)
     return {
       range = function()
-        return 0, 0, 0, 1
+        local col = column or 0
+        return 0, col, 0, col + 1
       end,
       parent = function()
         return nil
@@ -23,6 +25,7 @@ describe('semantic.type_definition_predicate caching', function()
     vim.api.nvim_buf_set_option(bufnr, 'filetype', 'scala')
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { 'x' })
     semantic.reset(bufnr)
+    extra_bufnrs = {}
 
     original_get_clients = vim.lsp.get_clients
     original_defer_fn = vim.defer_fn
@@ -45,12 +48,18 @@ describe('semantic.type_definition_predicate caching', function()
   end)
 
   after_each(function()
+    semantic.configure({ type_definition = { max_inflight = 4, max_inflight_requests = 8 } })
     vim.lsp.get_clients = original_get_clients
     vim.defer_fn = original_defer_fn
     vim.lsp.util.make_position_params = original_make_position_params
 
     if vim.api.nvim_buf_is_valid(bufnr) then
       vim.api.nvim_buf_delete(bufnr, { force = true })
+    end
+    for _, extra_bufnr in ipairs(extra_bufnrs) do
+      if vim.api.nvim_buf_is_valid(extra_bufnr) then
+        vim.api.nvim_buf_delete(extra_bufnr, { force = true })
+      end
     end
   end)
 
@@ -157,6 +166,42 @@ describe('semantic.type_definition_predicate caching', function()
     assert.are.equal(2, #results)
     assert.are.equal(false, results[2])
     assert.are.equal(1, call_count) -- still 1: cache hit
+  end)
+
+  it('limits typeDefinition requests globally across workspace buffers', function()
+    local callbacks = {}
+    fake_client.request = function(_method, _params, cb, _buf)
+      table.insert(callbacks, cb)
+    end
+    vim.defer_fn = function(_fn, _ms)
+      -- Keep requests in flight until this test resolves them explicitly.
+    end
+
+    local buffers = { bufnr }
+    for _ = 1, 2 do
+      local extra_bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(extra_bufnr, 0, -1, false, { 'x' })
+      semantic.reset(extra_bufnr)
+      table.insert(extra_bufnrs, extra_bufnr)
+      table.insert(buffers, extra_bufnr)
+    end
+
+    for _, target_bufnr in ipairs(buffers) do
+      for column = 1, 4 do
+        semantic.type_definition_predicate(target_bufnr, make_node(column), function(_uri)
+          return true
+        end, function() end)
+      end
+    end
+
+    assert.are.equal(8, #callbacks)
+
+    table.remove(callbacks, 1)(nil, { { targetUri = 'file:///path/to/zio/ZIO.scala' } })
+    assert.are.equal(8, #callbacks)
+
+    while #callbacks > 0 do
+      table.remove(callbacks, 1)(nil, { { targetUri = 'file:///path/to/zio/ZIO.scala' } })
+    end
   end)
 
   it('evaluates different predicates against cached URIs independently', function()

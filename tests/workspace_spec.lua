@@ -22,6 +22,11 @@ describe('workspace diagnostics coordinator', function()
     assert.is_true(workspace._test.is_enabled())
   end)
 
+  it('allows two workspace files to be indexed concurrently by default', function()
+    workspace.configure({})
+    assert.are.equal(2, workspace._test.max_inflight_files())
+  end)
+
   it('allows workspace indexing to be disabled', function()
     workspace.configure({ workspace_diagnostics = { enabled = false } })
     assert.is_false(workspace._test.is_enabled())

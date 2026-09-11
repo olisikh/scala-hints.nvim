@@ -14,6 +14,7 @@ local M = {}
 
 local settings = {
   enabled = true,
+  max_inflight_files = 2,
 }
 
 local coordinators = {}
@@ -29,8 +30,13 @@ local ignored_directories = {
 
 function M.configure(opts)
   local workspace_diagnostics = opts and opts.workspace_diagnostics
-  if type(workspace_diagnostics) == 'table' and type(workspace_diagnostics.enabled) == 'boolean' then
-    settings.enabled = workspace_diagnostics.enabled
+  if type(workspace_diagnostics) == 'table' then
+    if type(workspace_diagnostics.enabled) == 'boolean' then
+      settings.enabled = workspace_diagnostics.enabled
+    end
+    if type(workspace_diagnostics.max_inflight_files) == 'number' and workspace_diagnostics.max_inflight_files >= 1 then
+      settings.max_inflight_files = math.floor(workspace_diagnostics.max_inflight_files)
+    end
   end
 
   if not settings.enabled and M.cancel_all then
@@ -104,30 +110,36 @@ local function discover_files(root, done)
       return
     end
 
-    local handle = uv.fs_scandir(directory)
-    if handle then
-      while true do
-        local name, file_type = uv.fs_scandir_next(handle)
-        if not name then
-          break
-        end
-
-        local path = directory .. '/' .. name
-        if file_type == 'directory' then
-          if not ignored_directories[name] then
-            table.insert(directories, path)
-          end
-        elseif file_type == 'file' and is_scala_file(path) and not should_ignore(path) then
-          table.insert(files, normalize_path(path))
-        end
+    -- Directory I/O stays off the main thread. Entries are processed in small
+    -- batches after returning to Neovim's event loop.
+    uv.fs_opendir(directory, function(open_err, handle)
+      if open_err or not handle then
+        vim.schedule(scan_next)
+        return
       end
-    end
 
-    -- Yield once per directory so discovery does not monopolize the UI loop.
-    vim.schedule(scan_next)
+      uv.fs_readdir(handle, function(read_err, entries)
+        uv.fs_closedir(handle)
+        vim.schedule(function()
+          if not read_err then
+            for _, entry in ipairs(entries or {}) do
+              local path = directory .. '/' .. entry.name
+              if entry.type == 'directory' then
+                if not ignored_directories[entry.name] then
+                  table.insert(directories, path)
+                end
+              elseif entry.type == 'file' and is_scala_file(path) and not should_ignore(path) then
+                table.insert(files, normalize_path(path))
+              end
+            end
+          end
+          scan_next()
+        end)
+      end)
+    end, 128)
   end
 
-  scan_next()
+  vim.schedule(scan_next)
 end
 
 local function load_managed_buffer(path)
@@ -153,7 +165,10 @@ local function attach_clients(coordinator, bufnr)
     lsp.buf_attach_client(bufnr, metals.id)
   end
 
-  return client.start(bufnr) ~= nil
+  -- Hidden buffers need Metals for typeDefinition requests, but attaching the
+  -- scala-hints LSP client here emits didOpen and duplicates collection work.
+  -- The already-running client can still publish diagnostics by URI.
+  return client.get_client_id() ~= nil
 end
 
 local function enqueue(coordinator, path, priority)
@@ -181,11 +196,9 @@ local function enqueue(coordinator, path, priority)
   end
 end
 
-local function drain(coordinator)
-  if coordinator.running or coordinator.cancelled or not metals_ready(coordinator) then
-    return
-  end
+local drain
 
+local function start_next(coordinator)
   local path = table.remove(coordinator.queue, 1)
   if not path then
     return
@@ -202,12 +215,14 @@ local function drain(coordinator)
   entry.queued = false
   entry.running = true
   local generation = entry.generation
-  coordinator.running = path
+  coordinator.running[path] = true
+  coordinator.running_n = coordinator.running_n + 1
 
   local bufnr = load_managed_buffer(path)
   if not attach_clients(coordinator, bufnr) then
     entry.running = false
-    coordinator.running = nil
+    coordinator.running[path] = nil
+    coordinator.running_n = coordinator.running_n - 1
     logger.warn('Unable to attach clients for ' .. path, { bufnr = bufnr })
     vim.schedule(function()
       drain(coordinator)
@@ -222,7 +237,10 @@ local function drain(coordinator)
     end,
     on_complete = function()
       entry.running = false
-      coordinator.running = nil
+      if coordinator.running[path] then
+        coordinator.running[path] = nil
+        coordinator.running_n = coordinator.running_n - 1
+      end
 
       if entry.pending then
         entry.pending = false
@@ -235,6 +253,16 @@ local function drain(coordinator)
       end)
     end,
   })
+end
+
+drain = function(coordinator)
+  if coordinator.cancelled or not metals_ready(coordinator) then
+    return
+  end
+
+  while coordinator.running_n < settings.max_inflight_files and #coordinator.queue > 0 do
+    start_next(coordinator)
+  end
 end
 
 local function start_when_ready(coordinator)
@@ -305,6 +333,8 @@ function M.start(bufnr, metals_client)
       metals_client_id = metals_client.id,
       queue = {},
       entries = {},
+      running = {},
+      running_n = 0,
       cancelled = false,
       discovery_started = false,
     }
@@ -332,7 +362,11 @@ function M.refresh_buffer(bufnr)
   for _, coordinator in pairs(coordinators) do
     if is_within_root(path, coordinator.root) then
       enqueue(coordinator, path, true)
-      drain(coordinator)
+      -- didSave runs inside Neovim's write path. Defer the next worker so a
+      -- save returns before parsing and type-definition work begins.
+      vim.defer_fn(function()
+        drain(coordinator)
+      end, 100)
       return
     end
   end
@@ -386,6 +420,9 @@ end
 M._test = {
   is_enabled = function()
     return settings.enabled
+  end,
+  max_inflight_files = function()
+    return settings.max_inflight_files
   end,
   discover_files = discover_files,
   should_ignore = should_ignore,

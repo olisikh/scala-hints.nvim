@@ -47,6 +47,13 @@ M.setup = function(opts)
         return
       end
 
+      if workspace.is_managed(bufnr) then
+        -- Hidden workspace buffers only need Metals while indexing. Attaching
+        -- scala-hints here would emit didOpen and duplicate a queued refresh.
+        workspace.start(bufnr, attached_client)
+        return
+      end
+
       logger.info('Metals attached to buffer ' .. bufnr .. ', starting scala-hints client')
       client.start(bufnr)
       workspace.start(bufnr, attached_client)
@@ -56,6 +63,10 @@ M.setup = function(opts)
   vim.api.nvim_create_autocmd('BufEnter', {
     group = group,
     callback = function(event)
+      -- Attach code actions only when an indexed hidden buffer becomes visible.
+      if workspace.is_managed(event.buf) then
+        client.start(event.buf)
+      end
       workspace.refresh_buffer(event.buf)
     end,
   })

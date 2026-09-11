@@ -3,7 +3,8 @@ local logger = require('scala-hints.logger').new('semantic')
 
 local settings = {
   type_definition_timeouts_ms = { 400, 1000, 2000 },
-  max_inflight = 4,
+  max_inflight_per_buffer = 4,
+  max_inflight_requests = 8,
 }
 
 local function truncate_text(text, max_len)
@@ -35,8 +36,12 @@ local function normalize_timeouts(value)
   return out
 end
 
--- per-buffer state
+-- Per-buffer state plus a global request budget shared by every workspace
+-- buffer. This prevents background indexing from flooding Metals.
 local state = {}
+local global_inflight = 0
+local waiting_buffers = {}
+local waiting_buffer_set = {}
 
 local function buf_state(bufnr)
   local s = state[bufnr]
@@ -88,12 +93,33 @@ local function collect_location_uris(result)
   return uris
 end
 
-local function pump(bufnr)
+local pump
+
+local function wait_for_request_slot(bufnr)
+  if not waiting_buffer_set[bufnr] then
+    waiting_buffer_set[bufnr] = true
+    table.insert(waiting_buffers, bufnr)
+  end
+end
+
+local function pump_waiting_buffers()
+  while global_inflight < settings.max_inflight_requests and #waiting_buffers > 0 do
+    local next_bufnr = table.remove(waiting_buffers, 1)
+    waiting_buffer_set[next_bufnr] = nil
+    pump(next_bufnr)
+  end
+end
+
+pump = function(bufnr)
   local s = buf_state(bufnr)
 
-  while s.inflight_n < settings.max_inflight and #s.queue > 0 do
+  while s.inflight_n < settings.max_inflight_per_buffer
+    and global_inflight < settings.max_inflight_requests
+    and #s.queue > 0
+  do
     local job = table.remove(s.queue, 1)
     s.inflight_n = s.inflight_n + 1
+    global_inflight = global_inflight + 1
 
     local key = job.key
     s.inflight[key] = { callbacks = job.callbacks, tick = job.tick, done = false }
@@ -107,6 +133,7 @@ local function pump(bufnr)
 
       s.inflight[key] = nil
       s.inflight_n = s.inflight_n - 1
+      global_inflight = global_inflight - 1
 
       -- cache the raw URIs (not the predicate result) so different predicates
       -- can evaluate them independently on cache hits
@@ -152,6 +179,7 @@ local function pump(bufnr)
         pcall(entry.cb, predicate_result)
       end
 
+      pump_waiting_buffers()
       pump(bufnr)
     end
 
@@ -244,6 +272,10 @@ local function pump(bufnr)
     end
 
     run_attempt(1)
+  end
+
+  if #s.queue > 0 and global_inflight >= settings.max_inflight_requests then
+    wait_for_request_slot(bufnr)
   end
 end
 
@@ -380,6 +412,8 @@ end
 ---@param opts table|nil
 ---  - type_definition: table
 ---    - timeouts_ms: number[]
+---    - max_inflight: number (per-buffer compatibility limit)
+---    - max_inflight_requests: number (global Metals request limit)
 function M.configure(opts)
   if type(opts) ~= 'table' then
     return
@@ -396,7 +430,12 @@ function M.configure(opts)
   end
 
   if type(td.max_inflight) == 'number' and td.max_inflight > 0 then
-    settings.max_inflight = td.max_inflight
+    settings.max_inflight_per_buffer = math.floor(td.max_inflight)
+  end
+
+  if type(td.max_inflight_requests) == 'number' and td.max_inflight_requests > 0 then
+    settings.max_inflight_requests = math.floor(td.max_inflight_requests)
+    pump_waiting_buffers()
   end
 end
 

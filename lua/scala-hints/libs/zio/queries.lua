@@ -795,7 +795,7 @@ return {
   )
   arguments: (arguments
     (lambda_expression
-      parameters: [(wildcard) (identifier)]
+      parameters: (wildcard)
       (_) @_3
     )
   )
@@ -1325,7 +1325,6 @@ return {
       local verify_target = matches[1][1]
       local start = matches[3][1]
       local duration = matches[4][1]
-      local sleep_expr = matches[5][1]
       local effect = matches[7][1]
       local finish = matches[8][1]
 

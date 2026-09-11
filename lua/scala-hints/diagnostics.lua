@@ -1,5 +1,3 @@
-local async = require('plenary.async')
-local utils = require('scala-hints.utils')
 local query = require('scala-hints.query')
 local libs = require('scala-hints.libs')
 local constants = require('scala-hints.constants')
@@ -99,46 +97,106 @@ local function make_diagnostic(result, query_name, query_def)
 end
 
 function M.collect_diagnostics(bufnr, done)
-  async.run(function()
-    local parser = vim.treesitter.get_parser(bufnr, 'scala')
-    local tree = parser:parse()[1]
-    local root = tree:root()
+  -- Enter on a later event-loop turn so LSP didSave and workspace queue
+  -- callbacks return without parsing or traversing Treesitter immediately.
+  vim.defer_fn(function()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      done(nil)
+      return
+    end
 
+    local ok_parser, parser_or_err = pcall(vim.treesitter.get_parser, bufnr, 'scala')
+    if not ok_parser then
+      logger.warn(string.format('Failed to get Scala parser: %s', parser_or_err))
+      done(nil)
+      return
+    end
+
+    local ok_tree, tree_or_err = pcall(function()
+      return parser_or_err:parse()[1]
+    end)
+    if not ok_tree or not tree_or_err then
+      logger.warn(string.format('Failed to parse Scala buffer: %s', tree_or_err))
+      done(nil)
+      return
+    end
+
+    local root = tree_or_err:root()
     local start_line = 0
     local end_line = vim.api.nvim_buf_line_count(bufnr)
-
     local queries = {}
     for query_name, query_def in pairs(libs.get_all_queries(settings.excluded_libs)) do
-      table.insert(
-        queries,
-        async.wrap(
-          query.run_query({
-            bufnr = bufnr,
-            root = root,
-            query_name = query_name,
-            query_def = query_def,
-            start_line = start_line,
-            end_line = end_line,
-            callback = function(item)
-              return make_diagnostic(item, query_name, query_def)
-            end,
-          }),
-          1
-        )
-      )
+      table.insert(queries, { name = query_name, definition = query_def })
+    end
+    table.sort(queries, function(left, right)
+      return left.name < right.name
+    end)
+
+    local completed = false
+    local diagnostics = {}
+    local next_query = 1
+
+    local function finish(results)
+      if completed then
+        return
+      end
+      completed = true
+      done(results)
     end
 
-    local ok, diagnostics = utils.run_or_timeout(function()
-      return async.util.join(queries)
+    -- Preserve the existing whole-buffer timeout without blocking the UI.
+    vim.defer_fn(function()
+      if not completed then
+        logger.warn('Timed out collecting diagnostics after 30000ms')
+        finish(nil)
+      end
     end, 30000)
 
-    if ok then
-      done(utils.flatten_array(diagnostics))
-    else
-      logger.warn(string.format('Failed to collect diagnostics: %s', diagnostics))
-      done(nil)
+    local function run_next()
+      if completed then
+        return
+      end
+
+      local entry = queries[next_query]
+      next_query = next_query + 1
+      if not entry then
+        finish(diagnostics)
+        return
+      end
+
+      local thunk = query.run_query({
+        bufnr = bufnr,
+        root = root,
+        query_name = entry.name,
+        query_def = entry.definition,
+        start_line = start_line,
+        end_line = end_line,
+        callback = function(item)
+          return make_diagnostic(item, entry.name, entry.definition)
+        end,
+      })
+
+      -- Run one query per event-loop turn. A query's asynchronous Metals work
+      -- still uses semantic.lua's global request budget.
+      vim.defer_fn(function()
+        if completed then
+          return
+        end
+        local ok, err = pcall(thunk, function(results)
+          for _, diagnostic in ipairs(results or {}) do
+            table.insert(diagnostics, diagnostic)
+          end
+          vim.defer_fn(run_next, 0)
+        end)
+        if not ok then
+          logger.warn(string.format('Failed to run query %s: %s', entry.name, err))
+          vim.defer_fn(run_next, 0)
+        end
+      end, 0)
     end
-  end)
+
+    run_next()
+  end, 0)
 end
 
 return M

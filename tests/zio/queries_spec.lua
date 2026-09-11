@@ -1524,25 +1524,24 @@ describe('ZIO queries with type definition verification', function()
       })
     end)
 
-    it('matches .mapError(err => v) and suggests .orElseFail(v)', function()
-      H.mock_type_definition_predicate(true)
+    it('does not match a named parameter even when the body is constant', function()
       local source = [[val x = effect.mapError(err => newErr)]]
       bufnr, root = H.parse_scala(source)
 
       local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)
 
       assert.are.equal(0, #ready)
-      assert.are.equal(1, #pending)
+      assert.are.equal(0, #pending)
+    end)
 
-      local published = {}
-      pending[1](function(item)
-        table.insert(published, item)
-      end)
+    it('does not match a named parameter used by the body', function()
+      local source = [[val x = effect.mapError(err => new CalibanError.ExecutionError(err.getMessage))]]
+      bufnr, root = H.parse_scala(source)
 
-      assert.are.equal(1, #published)
-      H.assert_result(published[1], {
-        replacement = 'orElseFail(newErr)',
-      })
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(0, #pending)
     end)
 
     it('returns nothing when type definition says not ZIO', function()

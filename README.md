@@ -63,6 +63,10 @@ Workspace indexing is enabled by default. Disable it when a project is too large
 require('scala-hints').setup({
   workspace_diagnostics = {
     enabled = false, -- defaults to true
+    max_inflight_files = 2, -- default
+  },
+  type_definition = {
+    max_inflight_requests = 8, -- global Metals request budget (default)
   },
   diagnostics = {
     default_severity = 'HINT',

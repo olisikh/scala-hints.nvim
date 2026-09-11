@@ -159,8 +159,7 @@ describe('ZIO diagnostics/actions integration', function()
         source = [[val x = effect.mapError(err => newErr)]],
         query_name = 'or_else_fail',
         query_def = queries.or_else_fail,
-        expected_count = 1,
-        expected_replacement = 'orElseFail(newErr)',
+        expected_count = 0, -- named params do not match; only wildcard _ does
       },
       {
         name = 'or_else_fail2',
