@@ -144,6 +144,18 @@ describe('Cats tagless queries', function()
         replacement = 'ifM(fa, fc)',
       })
     end)
+
+    it('does not match when a branch uses the flatMap parameter', function()
+      local source = [=[
+        def f[F[_]: Monad](fb: F[Boolean], fa: Boolean => F[Int], fc: F[Int]) =
+          fb.flatMap(b => if (b) fa(b) else fc)
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.if_m)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
   end)
 
   describe('handle_error', function()
@@ -163,6 +175,24 @@ describe('Cats tagless queries', function()
       H.assert_result(ready[1], {
         replacement = '.handleError(_ => default)',
       })
+    end)
+
+    it('does not match a nested match with post-processing', function()
+      local source = [=[
+        def f[F[_]](fa: F[Int], default: Int)(implicit F: MonadError[F, Throwable]) =
+          fa.attempt.flatMap(v => {
+            val mapped = v match {
+              case Right(a) => Applicative[F].pure(a)
+              case Left(e) => Applicative[F].pure(default)
+            }
+            mapped.map(_ + 1)
+          })
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.handle_error)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
     end)
   end)
 
@@ -240,6 +270,18 @@ describe('Cats tagless queries', function()
       })
     end)
 
+    it('does not match when the success handler transforms the option value', function()
+      local source = [=[
+        def f[F[_]: MonadError](opt: Option[Int], err: Throwable) =
+          opt.fold(F.raiseError(err))(x => F.pure(x + 1))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_option)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+
     it('does not match without MonadError evidence', function()
       local source = [=[
         def foo[F[_]](opt: Option[Int], err: Throwable) =
@@ -267,6 +309,18 @@ describe('Cats tagless queries', function()
       H.assert_result(ready[1], {
         replacement = 'F.fromEither(either)',
       })
+    end)
+
+    it('does not match when either fold handlers transform their values', function()
+      local source = [=[
+        def f[F[_]: MonadError](e: Either[Throwable, Int]) =
+          e.fold(t => F.raiseError(t), x => F.pure(x + 1))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.from_either)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
     end)
 
     it('does not match without MonadError evidence', function()
@@ -299,6 +353,24 @@ describe('Cats tagless queries', function()
       H.assert_result(ready[1], {
         replacement = '.redeem(e => g(e), a => f(a))',
       })
+    end)
+
+    it('does not match a nested match with post-processing', function()
+      local source = [=[
+        def f[F[_]](fa: F[Int])(implicit F: MonadError[F, Throwable]) =
+          fa.attempt.map(v => {
+            val mapped = v match {
+              case Right(a) => a
+              case Left(e) => 0
+            }
+            mapped + 1
+          })
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
     end)
 
     it('does not match without MonadError evidence', function()
@@ -336,6 +408,24 @@ describe('Cats tagless queries', function()
       })
     end)
 
+    it('does not match a nested match with post-processing', function()
+      local source = [=[
+        def f[F[_]](fa: F[Int])(implicit F: MonadError[F, Throwable]) =
+          fa.attempt.flatMap(v => {
+            val mapped = v match {
+              case Right(a) => F.pure(a)
+              case Left(e) => F.pure(0)
+            }
+            mapped.map(_ + 1)
+          })
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem_with)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
+    end)
+
     it('does not match without MonadError evidence', function()
       local source = [=[
         def foo[F[_]](fa: F[Int], fb: F[String], fc: Throwable => F[String]) =
@@ -365,6 +455,18 @@ describe('Cats tagless queries', function()
       H.assert_result(ready[1], {
         replacement = ' <* fb',
       })
+    end)
+
+    it('does not match when the effect uses the flatMap parameter', function()
+      local source = [=[
+        def f[F[_]: Apply](fa: F[Int], make: Int => F[String]) =
+          fa.flatMap(a => make(a).as(a))
+      ]=]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.product_l)
+      assert.are.equal(0, #pending)
+      assert.are.equal(0, #ready)
     end)
 
     it('matches flatMap(a => fb.map(_ => a)) when Apply evidence exists', function()

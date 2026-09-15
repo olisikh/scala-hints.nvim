@@ -45,33 +45,51 @@ local function unwrap_single_expression_block(bufnr, node)
   return utils.get_node_text(bufnr, node)
 end
 
-local function collect_case_clauses(node, out)
-  out = out or {}
+local function direct_case_body(node)
   if not node then
-    return out
+    return nil
   end
-  if node:type() == 'case_clause' then
-    table.insert(out, node)
-    return out
+
+  local node_type = node:type()
+  if node_type == 'case_block' or node_type == 'indented_cases' then
+    return node
   end
-  for child in node:iter_children() do
-    collect_case_clauses(child, out)
+
+  -- A lambda may itself be a case function, but do not descend through
+  -- arbitrary expressions: nested matches are not the function body.
+  if node_type == 'lambda_expression' or node_type == 'parenthesized_expression' then
+    for _, child in ipairs(node:named_children()) do
+      local child_type = child:type()
+      if child_type == 'case_block' or child_type == 'indented_cases' then
+        return child
+      end
+      if node_type == 'parenthesized_expression' and child_type == 'lambda_expression' then
+        return direct_case_body(child)
+      end
+    end
   end
-  return out
+
+  return nil
 end
 
 local function extract_case_map(bufnr, match_node)
-  local cases = collect_case_clauses(match_node, {})
+  local case_body = direct_case_body(match_node)
+  if not case_body then
+    return {}
+  end
+
   local case_map = {}
-  for _, case_node in ipairs(cases) do
-    local text = utils.get_node_text(bufnr, case_node)
-    local ctor, param, body = text:match('case%s+([%w_]+)%s*%(([%w_]+)%)%s*=>%s*([%s%S]+)')
-    if not ctor then
-      ctor, body = text:match('case%s+([%w_]+)%s*=>%s*([%s%S]+)')
-      param = '_'
-    end
-    if ctor and body then
-      case_map[ctor] = { param = param, body = vim.trim(body) }
+  for _, case_node in ipairs(case_body:named_children()) do
+    if case_node:type() == 'case_clause' then
+      local text = utils.get_node_text(bufnr, case_node)
+      local ctor, param, body = text:match('case%s+([%w_]+)%s*%(([%w_]+)%)%s*=>%s*([%s%S]+)')
+      if not ctor then
+        ctor, body = text:match('case%s+([%w_]+)%s*=>%s*([%s%S]+)')
+        param = '_'
+      end
+      if ctor and body then
+        case_map[ctor] = { param = param, body = vim.trim(body) }
+      end
     end
   end
   return case_map
@@ -83,6 +101,16 @@ local function contains_identifier(text, ident)
   end
   local escaped = vim.pesc(ident)
   return text:find('%f[%w_]' .. escaped .. '%f[^%w_]') ~= nil
+end
+
+local function case_bodies_reference_other_params(left, right)
+  if right.param ~= '_' and left.param ~= right.param and contains_identifier(left.body, right.param) then
+    return true
+  end
+  if left.param ~= '_' and left.param ~= right.param and contains_identifier(right.body, left.param) then
+    return true
+  end
+  return false
 end
 
 local function is_tagless_unit_text(text)
@@ -405,6 +433,10 @@ return {
       local consequence_text = unwrap_single_expression_block(bufnr, consequence)
       local alternative_text = unwrap_single_expression_block(bufnr, alternative)
 
+      if contains_identifier(consequence_text, param_text) or contains_identifier(alternative_text, param_text) then
+        return {}
+      end
+
       return {
         {
           diagnostic = { row = dstart_row, start_col = dstart_col, end_col = end_col },
@@ -444,6 +476,10 @@ return {
       local right = case_map.Right
       local left = case_map.Left
       if not (right and left) then
+        return {}
+      end
+
+      if case_bodies_reference_other_params(left, right) then
         return {}
       end
 
@@ -629,7 +665,7 @@ return {
       local finish = matches[7][1]
 
       local success_text = utils.get_node_text(bufnr, success_handler)
-      if not success_text or not success_text:match('F%.pure') then
+      if not success_text or vim.trim(success_text) ~= 'F.pure' then
         return {}
       end
 
@@ -683,11 +719,11 @@ return {
         return {}
       end
 
-      if not raise_text:match('F%.raiseError') then
+      if vim.trim(raise_text) ~= 'F.raiseError' then
         return {}
       end
 
-      if not pure_text:match('F%.pure') then
+      if vim.trim(pure_text) ~= 'F.pure' then
         return {}
       end
 
@@ -747,6 +783,10 @@ return {
         return {}
       end
 
+      if case_bodies_reference_other_params(left, right) then
+        return {}
+      end
+
       local left_fn = left.param .. ' => ' .. left.body
       local right_fn = right.param .. ' => ' .. right.body
 
@@ -794,6 +834,10 @@ return {
       local right = case_map.Right
       local left = case_map.Left
       if not (right and left) then
+        return {}
+      end
+
+      if case_bodies_reference_other_params(left, right) then
         return {}
       end
 
@@ -850,14 +894,14 @@ return {
 
       -- Match fb.as(a) where a is the parameter
       local as_match = body_text:match('^(.-)%.as%(' .. vim.pesc(param_text) .. '%)$')
-      if as_match then
+      if as_match and not contains_identifier(as_match, param_text) then
         effect_text = vim.trim(as_match)
       end
 
       -- Match fb.map(_ => a) where a is the parameter
       if not effect_text then
         local map_match = body_text:match('^(.-)%.map%(_%s*=>%s*' .. vim.pesc(param_text) .. '%)$')
-        if map_match then
+        if map_match and not contains_identifier(map_match, param_text) then
           effect_text = vim.trim(map_match)
         end
       end
