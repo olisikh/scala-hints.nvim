@@ -414,6 +414,23 @@ describe('Monix queries with type definition verification', function()
       assert.are.equal(0, #ready)
       assert.are.equal(0, #pending)
     end)
+
+    it('does not harvest cases from a nested match in the map lambda', function()
+      local source = [[val x = Task(1).attempt.map(v => {
+  val mapped = v match {
+    case Right(a) => a
+    case Left(e) => 0
+  }
+  mapped + 1
+})]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(0, #results)
+    end)
   end)
 
   ---------------------------------------------------------------------------
@@ -455,6 +472,23 @@ describe('Monix queries with type definition verification', function()
       H.assert_result(results[1], {
         replacement = '.redeemWith(e => {\nval fallback = Task.now(0)\n    fallback\n}, v => {\nval next = Task.now(v + 1)\n    next\n})',
       })
+    end)
+
+    it('does not harvest cases from a nested match in the flatMap lambda', function()
+      local source = [[val x = Task(1).attempt.flatMap(v => {
+  val mapped = v match {
+    case Right(a) => Task.now(a)
+    case Left(e) => Task.now(0)
+  }
+  mapped.map(_ + 1)
+})]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.redeem_with)
+      local results = H.resolve_pending(pending)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(0, #results)
     end)
   end)
 

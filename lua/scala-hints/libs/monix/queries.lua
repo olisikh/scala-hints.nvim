@@ -158,23 +158,28 @@ local function with_redeem_method(item, method)
   return copy
 end
 
-local function collect_case_clauses(node, out)
-  out = out or {}
-  if not node then
-    return out
-  end
-  if node:type() == 'case_clause' then
-    table.insert(out, node)
-    return out
-  end
-  for child in node:iter_children() do
-    collect_case_clauses(child, out)
-  end
-  return out
-end
-
 local function extract_case_map(bufnr, match_node)
-  local cases = collect_case_clauses(match_node, {})
+  -- `map { case ... }` and `flatMap { case ... }` capture a case_block.
+  -- Do not walk descendants here: a lambda/block argument may contain an
+  -- unrelated nested match whose cases must not be lifted into redeem.
+  if not match_node or match_node:type() ~= 'case_block' then
+    return {}
+  end
+
+  local cases = {}
+  for index = 0, match_node:named_child_count() - 1 do
+    local case_node = match_node:named_child(index)
+    if case_node:type() ~= 'case_clause' then
+      return {}
+    end
+    table.insert(cases, case_node)
+  end
+
+  -- Only the complete, direct Right/Left case set is equivalent to redeem.
+  if #cases ~= 2 then
+    return {}
+  end
+
   local case_map = {}
   for _, case_node in ipairs(cases) do
     local text = utils.get_node_text(bufnr, case_node)
@@ -183,12 +188,18 @@ local function extract_case_map(bufnr, match_node)
       ctor, body = text:match('case%s+([%w_]+)%s*=>%s*([%s%S]+)')
       param = '_'
     end
-    if ctor and body then
-      -- Type-check the expression returned by the case body, not its
-      -- enclosing block, so Metals can resolve the actual result type.
-      local body_node = final_expression_node(case_node:named_child(case_node:named_child_count() - 1))
-      case_map[ctor] = { param = param, body = vim.trim(body), body_node = body_node }
+    if not ctor or not body or (ctor ~= 'Right' and ctor ~= 'Left') or case_map[ctor] then
+      return {}
     end
+
+    -- Type-check the expression returned by the case body, not its
+    -- enclosing block, so Metals can resolve the actual result type.
+    local body_node = final_expression_node(case_node:named_child(case_node:named_child_count() - 1))
+    case_map[ctor] = { param = param, body = vim.trim(body), body_node = body_node }
+  end
+
+  if not (case_map.Right and case_map.Left) then
+    return {}
   end
   return case_map
 end
