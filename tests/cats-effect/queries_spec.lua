@@ -1203,4 +1203,178 @@ describe('Cats-Effect queries with type definition verification', function()
       })
     end)
   end)
+
+  ---------------------------------------------------------------------------
+  -- unsafe rewrite regressions
+  ---------------------------------------------------------------------------
+  describe('unsafe rewrite regressions', function()
+    local function assert_no_action(source, query_def)
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, query_def)
+      assert.are.equal(0, #ready)
+      assert.are.equal(0, #pending)
+    end
+
+    it('does not move an ifM branch that references the removed predicate value', function()
+      assert_no_action(
+        [[val x = pred.flatMap(b => if (b) IO.pure(b) else IO.pure(!b))]],
+        queries.if_m
+      )
+    end)
+
+    it('does not rewrite timeout when the Left branch does not return its race value', function()
+      assert_no_action(
+        [[
+          val x = IO.race(fa, Temporal[IO].sleep(d)).flatMap {
+            case Left(_)  => IO.pure(42)
+            case Right(t) => IO.raiseError(errorFor(t))
+          }
+        ]],
+        queries.timeout
+      )
+    end)
+
+    it('does not rewrite timeout with a non-canonical timeout error', function()
+      assert_no_action(
+        [[
+          val x = IO.race(fa, Temporal[IO].sleep(d)).flatMap {
+            case Left(a) => IO.pure(a)
+            case Right(_) => IO.raiseError(new MyTimeout)
+          }
+        ]],
+        queries.timeout
+      )
+    end)
+
+    it('does not consume an unrelated nested match for timeout', function()
+      assert_no_action(
+        [[
+          val x = IO.race(fa, Temporal[IO].sleep(d)).flatMap { _ =>
+            other match {
+              case Left(a)  => IO.pure(a)
+              case Right(_) => IO.raiseError(new TimeoutException)
+            }
+          }
+        ]],
+        queries.timeout
+      )
+    end)
+
+    it('does not move a flatMap-dependent effect out of scope for tupled', function()
+      assert_no_action(
+        [[val x = fa.flatMap(a => fb(a).map(b => (a, b)))]],
+        queries.tupled
+      )
+    end)
+
+    it('does not move a flatMap-dependent effect out of scope for parTupled', function()
+      assert_no_action(
+        [[val x = fa.flatMap(a => fb(a).map(b => (a, b))).parTupled]],
+        queries.par_tupled
+      )
+    end)
+
+    it('does not treat a value definition as an independent mapN effect', function()
+      assert_no_action(
+        [[
+          val x = for {
+            a <- fa
+            b = f(a)
+            c <- fc
+          } yield (a, b, c)
+        ]],
+        queries.map_n
+      )
+    end)
+
+    it('does not move a dependent mapN generator out of scope', function()
+      assert_no_action(
+        [[val x = for { a <- fa; b <- fb(a) } yield (a, b)]],
+        queries.map_n
+      )
+    end)
+
+    it('does not move a dependent fiber start out of scope', function()
+      assert_no_action(
+        [[val x = for { fA <- fa.start; fB <- make(fA).start; a <- fA.joinWithNever; b <- fB.joinWithNever } yield (a, b)]],
+        queries.par_tupled_fibers
+      )
+    end)
+
+    it('does not rewrite a guarded Some case as option traverse', function()
+      assert_no_action(
+        [[val x = opt match { case Some(a) if a > 0 => f(a); case None => IO.unit }]],
+        queries.option_traverse
+      )
+    end)
+
+    it('does not drop an extra case from an option match', function()
+      assert_no_action(
+        [[
+          val x = opt match {
+            case Some(x) => IO.pure(x)
+            case None    => IO.raiseError(err)
+            case _       => IO.raiseError(otherErr)
+          }
+        ]],
+        queries.from_option_match
+      )
+    end)
+
+    it('does not drop an extra case from an either match', function()
+      assert_no_action(
+        [[
+          val x = either match {
+            case Right(y) => IO.pure(y)
+            case Left(e)  => IO.raiseError(e)
+            case _        => IO.raiseError(otherErr)
+          }
+        ]],
+        queries.from_either_match
+      )
+    end)
+
+    it('does not drop a guard from a typed recoverWith case', function()
+      assert_no_action(
+        [[
+          val x = fa.attempt.flatMap {
+            case Left(e: MyEx) if shouldRecover(e) => recover(e)
+            case Left(e)                            => IO.raiseError(e)
+            case Right(a)                           => IO.pure(a)
+          }
+        ]],
+        queries.recover_with
+      )
+    end)
+
+    it('does not consume an unrelated nested match for handleError', function()
+      assert_no_action(
+        [[
+          val x = fa.attempt.flatMap { _ =>
+            other match {
+              case Right(a) => IO.pure(a)
+              case Left(e)  => IO.pure(default)
+            }
+          }
+        ]],
+        queries.handle_error
+      )
+    end)
+
+    it('does not drop postprocessing around a nested match for redeem', function()
+      assert_no_action(
+        [[
+          val x = IO(1).attempt.map(v => {
+            val mapped = v match {
+              case Right(a) => a
+              case Left(e)  => 0
+            }
+            mapped + 1
+          })
+        ]],
+        queries.redeem
+      )
+    end)
+  end)
 end)

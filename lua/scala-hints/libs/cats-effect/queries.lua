@@ -72,6 +72,35 @@ local function is_io_unit_text(text)
   return vim.trim(text) == 'IO.unit'
 end
 
+local function get_exact_io_call_arg(bufnr, node, method)
+  local call = unwrap_single_expression_node(node)
+  if not call or call:type() ~= 'call_expression' then
+    return nil
+  end
+
+  local func_node = call:field('function')[1]
+  if not func_node or func_node:type() ~= 'field_expression' then
+    return nil
+  end
+
+  local value_node = func_node:field('value')[1]
+  local field_node = func_node:field('field')[1]
+  if not value_node or not field_node then
+    return nil
+  end
+
+  if utils.get_node_text(bufnr, value_node) ~= 'IO' or utils.get_node_text(bufnr, field_node) ~= method then
+    return nil
+  end
+
+  local args_node = call:field('arguments')[1]
+  if not args_node or args_node:named_child_count() ~= 1 then
+    return nil
+  end
+
+  return utils.get_node_text(bufnr, args_node:named_child(0))
+end
+
 local function get_io_raise_error_arg(bufnr, node)
   local call = unwrap_single_expression_node(node)
   if not call or call:type() ~= 'call_expression' then
@@ -108,34 +137,59 @@ local function get_io_raise_error_arg(bufnr, node)
   return utils.get_node_text(bufnr, err_node)
 end
 
-local function collect_case_clauses(node, out)
-  out = out or {}
-  if not node then
-    return out
+local function direct_case_clauses(node)
+  if not node or node:type() ~= 'case_block' then
+    return nil
   end
-  if node:type() == 'case_clause' then
-    table.insert(out, node)
-    return out
+
+  local cases = {}
+  for index = 0, node:named_child_count() - 1 do
+    local case_node = node:named_child(index)
+    if case_node:type() ~= 'case_clause' then
+      return nil
+    end
+    for case_child in case_node:iter_children() do
+      if case_child:type() == 'guard' then
+        return nil
+      end
+    end
+    table.insert(cases, case_node)
   end
-  for child in node:iter_children() do
-    collect_case_clauses(child, out)
-  end
-  return out
+  return cases
 end
 
 local function extract_case_map(bufnr, match_node)
-  local cases = collect_case_clauses(match_node, {})
+  local cases = direct_case_clauses(match_node)
+  if not cases or #cases ~= 2 then
+    return {}
+  end
+
   local case_map = {}
   for _, case_node in ipairs(cases) do
-    local text = utils.get_node_text(bufnr, case_node)
-    local ctor, param, body = text:match('case%s+([%w_]+)%s*%(([%w_]+)%)%s*=>%s*([%s%S]+)')
-    if not ctor then
-      ctor, body = text:match('case%s+([%w_]+)%s*=>%s*([%s%S]+)')
-      param = '_'
+    local pattern_node = case_node:field('pattern')[1]
+    local body_node = case_node:field('body')[1]
+    local ctor_node = pattern_node and pattern_node:field('type')[1]
+    local param_node = pattern_node and pattern_node:field('pattern')[1]
+    if not ctor_node or not param_node or not body_node then
+      return {}
     end
-    if ctor and body then
-      case_map[ctor] = { param = param, body = vim.trim(body) }
+
+    local param_type = param_node:type()
+    if param_type ~= 'identifier' and param_type ~= 'wildcard' then
+      return {}
     end
+
+    local ctor = utils.get_node_text(bufnr, ctor_node)
+    local param = utils.get_node_text(bufnr, param_node)
+    case_map[ctor] = {
+      param = param,
+      body = vim.trim(utils.get_node_text(bufnr, body_node)),
+      body_node = body_node,
+    }
+  end
+
+  if not (case_map.Right and case_map.Left) then
+    return {}
   end
   return case_map
 end
@@ -1071,16 +1125,19 @@ return {
         return {}
       end
 
-      local right_err = right.body:match('IO%.raiseError%((.+)%)')
-      if not right_err then
+      -- timeout must preserve the original effect result and use the
+      -- canonical timeout failure. A wildcard Left parameter or a custom
+      -- error cannot prove either property.
+      local right_err = get_exact_io_call_arg(bufnr, right.body_node, 'raiseError')
+      if vim.trim(right_err or '') ~= 'new TimeoutException' then
         return {}
       end
 
-      local left_pure = left.body:match('IO%.pure%((.+)%)')
-      if not left_pure then
+      local left_pure = get_exact_io_call_arg(bufnr, left.body_node, 'pure')
+      if left.param == '_' or not left_pure or vim.trim(left_pure) ~= left.param then
         return {}
       end
-      if left.param ~= '_' and vim.trim(left_pure) ~= left.param then
+      if right.param ~= '_' then
         return {}
       end
 
@@ -1162,6 +1219,9 @@ return {
 
       local fa_text = utils.get_node_text(bufnr, fa)
       local fb_text = utils.get_node_text(bufnr, fb)
+      if contains_identifier(fb_text, utils.get_node_text(bufnr, a_param)) then
+        return {}
+      end
 
       local start_row, start_col, _, _ = fa:range()
       local _, _, end_row, end_col = finish:range()
@@ -1241,6 +1301,9 @@ return {
 
       local fa_text = utils.get_node_text(bufnr, fa)
       local fb_text = utils.get_node_text(bufnr, fb)
+      if contains_identifier(fb_text, utils.get_node_text(bufnr, a_param)) then
+        return {}
+      end
 
       local start_row, start_col, _, _ = fa:range()
       local _, _, end_row, end_col = finish:range()
@@ -1721,6 +1784,14 @@ return {
         return {}
       end
 
+      -- The branches are moved outside the lambda by ifM, so they must not
+      -- depend on the lambda parameter.
+      if contains_identifier(utils.get_node_text(bufnr, consequence), param_text)
+        or contains_identifier(utils.get_node_text(bufnr, alternative), param_text)
+      then
+        return {}
+      end
+
       local dstart_row, dstart_col, _, _ = target:range()
       local _, _, end_row, end_col = finish:range()
 
@@ -1894,6 +1965,11 @@ return {
       local none_body = matches[6][1]
       local full = matches[7][1]
 
+      local cases = direct_case_clauses(full:field('body')[1])
+      if not cases or #cases ~= 2 then
+        return {}
+      end
+
       local none_text = unwrap_single_expression_block(bufnr, none_body)
       if not is_io_unit_text(none_text) then
         return {}
@@ -1970,8 +2046,8 @@ return {
       local attempt_id = matches[2][1]
       local match_node = matches[5][1]
 
-      local cases = collect_case_clauses(match_node, {})
-      if #cases ~= 3 then
+      local cases = direct_case_clauses(match_node)
+      if not cases or #cases ~= 3 then
         return {}
       end
 
@@ -2141,6 +2217,10 @@ return {
 
       local fa_text = utils.get_node_text(bufnr, fa)
       local fb_text = utils.get_node_text(bufnr, fb)
+      if contains_identifier(fb_text, utils.get_node_text(bufnr, fiber_a)) then
+        return {}
+      end
+
       local start_row, start_col, end_row, end_col = full:range()
 
       local item = {
@@ -2194,6 +2274,11 @@ return {
       local some_body = matches[4][1]
       local none_body = matches[6][1]
       local full = matches[7][1]
+
+      local cases = direct_case_clauses(full:field('body')[1])
+      if not cases or #cases ~= 2 then
+        return {}
+      end
 
       -- Some body must be IO.pure(x) where x is the param
       local some_text = unwrap_single_expression_block(bufnr, some_body)
@@ -2268,6 +2353,11 @@ return {
       local left_param = matches[6][1]
       local left_body = matches[7][1]
       local full = matches[8][1]
+
+      local cases = direct_case_clauses(full:field('body')[1])
+      if not cases or #cases ~= 2 then
+        return {}
+      end
 
       -- Right body must be IO.pure(y) where y is the param
       local right_text = unwrap_single_expression_block(bufnr, right_body)
@@ -2501,8 +2591,27 @@ return {
           if param_node:type() ~= 'identifier' then
             return {}
           end
+
+          local operator
+          for enum_child in child:iter_children() do
+            if enum_child:type() == '<-' or enum_child:type() == '=' then
+              operator = enum_child:type()
+              break
+            end
+          end
+          if operator ~= '<-' then
+            return {}
+          end
+
+          local effect_text = utils.get_node_text(bufnr, effect_node)
+          for _, previous_param in ipairs(params) do
+            if contains_identifier(effect_text, previous_param) then
+              return {}
+            end
+          end
+
           table.insert(params, utils.get_node_text(bufnr, param_node))
-          table.insert(effects, utils.get_node_text(bufnr, effect_node))
+          table.insert(effects, effect_text)
           table.insert(effect_nodes, effect_node)
         end
       end
