@@ -72,6 +72,13 @@ local function is_zio_unit_text(text)
   return vim.trim(text) == 'ZIO.unit'
 end
 
+local function format_lambda_body(parts)
+  if #parts == 1 then
+    return parts[1]
+  end
+  return '{ ' .. table.concat(parts, '; ') .. ' }'
+end
+
 return {
 
   -- ZIO.succeed(()) ~> ZIO.unit
@@ -910,7 +917,7 @@ return {
       (lambda_expression
         parameters: (wildcard)
         (call_expression
-          function: (field_expression) @_3
+          function: (field_expression) @_3 (#eq? @_3 "ZIO.succeed")
           arguments: (arguments (_) @_4)
         )
       )
@@ -1717,11 +1724,11 @@ return {
         local child = body_block:named_child(i)
         table.insert(body_parts, utils.get_node_text(bufnr, child))
       end
-      local body_text = table.concat(body_parts, '; ')
+      local body_text = format_lambda_body(body_parts)
       local replacement = 'tap(' .. param_text .. ' => ' .. body_text .. ')'
 
-      -- First body expression must be a ZIO effect for .tap to be valid
-      local first_body_expr = body_block:named_child(0)
+      -- The retained block must return a ZIO effect for .tap to be valid.
+      local body_result = body_block:named_child(child_count - 2)
 
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
@@ -1739,7 +1746,7 @@ return {
                 done(nil)
                 return
               end
-              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+              semantic.type_definition_predicate(bufnr, body_result, is_zio_type, function(body_is_zio)
                 if body_is_zio then
                   done(item)
                 else
@@ -1808,11 +1815,11 @@ return {
         local child = body_block:named_child(i)
         table.insert(body_parts, utils.get_node_text(bufnr, child))
       end
-      local body_text = table.concat(body_parts, '; ')
+      local body_text = format_lambda_body(body_parts)
       local replacement = 'tapError(' .. param_text .. ' => ' .. body_text .. ')'
 
-      -- First body expression must be a ZIO effect for .tapError to be valid
-      local first_body_expr = body_block:named_child(0)
+      -- The retained block must return a ZIO effect for .tapError to be valid.
+      local body_result = body_block:named_child(child_count - 2)
 
       local item = {
         diagnostic = { row = start_row, start_col = start_col, end_col = end_col },
@@ -1830,7 +1837,7 @@ return {
                 done(nil)
                 return
               end
-              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body_is_zio)
+              semantic.type_definition_predicate(bufnr, body_result, is_zio_type, function(body_is_zio)
                 if body_is_zio then
                   done(item)
                 else
@@ -1985,12 +1992,15 @@ return {
           table.insert(body_parts, utils.get_node_text(bufnr, child))
         end
 
-        local body_text = table.concat(body_parts, '; ')
-        if body_text == '' then
+        if #body_parts == 0 then
           return nil
         end
 
-        return { param = param_text, body = body_text }
+        return {
+          param = param_text,
+          body = format_lambda_body(body_parts),
+          result = body_node:named_child(child_count - 2),
+        }
       end
 
       local first_side = build_side(first_param, first_last, first_body)
@@ -2008,10 +2018,6 @@ return {
         err_side = second_side
         ok_side = first_side
       end
-
-      -- First body expressions must be ZIO effects for .tapBoth to be valid
-      local first_body_expr = first_body:named_child(0)
-      local second_body_expr = second_body:named_child(0)
 
       local start_row, start_col, _, _ = start:range()
       local _, _, end_row, end_col = finish:range()
@@ -2042,12 +2048,12 @@ return {
                 done(nil)
                 return
               end
-              semantic.type_definition_predicate(bufnr, first_body_expr, is_zio_type, function(body1_is_zio)
+              semantic.type_definition_predicate(bufnr, first_side.result, is_zio_type, function(body1_is_zio)
                 if not body1_is_zio then
                   done(nil)
                   return
                 end
-                semantic.type_definition_predicate(bufnr, second_body_expr, is_zio_type, function(body2_is_zio)
+                semantic.type_definition_predicate(bufnr, second_side.result, is_zio_type, function(body2_is_zio)
                   if body2_is_zio then
                     done(item)
                   else

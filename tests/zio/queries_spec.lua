@@ -153,6 +153,16 @@ describe('ZIO queries with type definition verification', function()
         replacement = 'orElseFail(newErr)',
       })
     end)
+
+    it('does not match non-ZIO constructors', function()
+      local source = [[val x = effect.flatMapError(_ => Other.make(newErr))]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.or_else_fail3)
+
+      assert.are.equal(0, #ready)
+      assert.are.equal(0, #pending)
+    end)
   end)
 
   ---------------------------------------------------------------------------
@@ -819,7 +829,7 @@ describe('ZIO queries with type definition verification', function()
       })
     end)
 
-    it('matches .map with multi-statement block', function()
+    it('preserves braces for a multi-statement block', function()
       local source = [[val x = effect.map(v => { log(v); notify(v); v })]]
       bufnr, root = H.parse_scala(source)
 
@@ -828,8 +838,24 @@ describe('ZIO queries with type definition verification', function()
       local results = H.resolve_pending(pending)
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
-        replacement = 'tap(v => log(v); notify(v))',
+        replacement = 'tap(v => { log(v); notify(v) })',
       })
+    end)
+
+    it('does not match when the retained block does not return a ZIO effect', function()
+      local semantic = require('scala-hints.semantic')
+      semantic.type_definition_predicate = function(b, node, _predicate, cb)
+        local text = vim.treesitter.get_node_text(node, b)
+        cb(text == 'effect' or text == 'zioLog(v)')
+      end
+
+      local source = [[val x = effect.map(v => { zioLog(v); 42; v })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap)
+      assert.are.equal(0, #ready)
+      assert.are.equal(1, #pending)
+      assert.are.equal(0, #H.resolve_pending(pending))
     end)
 
     it('does not match .map without block (simple transform)', function()
@@ -898,6 +924,19 @@ describe('ZIO queries with type definition verification', function()
       })
     end)
 
+    it('preserves braces for a multi-statement block', function()
+      local source = [[val x = effect.mapError(e => { logError(e); notify(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_error)
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'tapError(e => { logError(e); notify(e) })',
+      })
+    end)
+
     it('does not match .mapError without block', function()
       local source = [[val x = effect.mapError(e => newError)]]
       bufnr, root = H.parse_scala(source)
@@ -953,6 +992,20 @@ describe('ZIO queries with type definition verification', function()
       assert.are.equal(1, #results)
       H.assert_result(results[1], {
         replacement = 'tapBoth(e => logError(e), v => log(v))',
+      })
+    end)
+
+    it('preserves braces for multi-statement blocks', function()
+      local source = [[val x = effect.map(v => { log(v); notify(v); v }).mapError(e => { logError(e); notifyError(e); e })]]
+      bufnr, root = H.parse_scala(source)
+
+      local ready, pending = H.run_handler(bufnr, root, queries.tap_both)
+
+      assert.are.equal(0, #ready)
+      local results = H.resolve_pending(pending)
+      assert.are.equal(1, #results)
+      H.assert_result(results[1], {
+        replacement = 'tapBoth(e => { logError(e); notifyError(e) }, v => { log(v); notify(v) })',
       })
     end)
 
